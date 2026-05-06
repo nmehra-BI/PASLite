@@ -1,16 +1,23 @@
 import { useRanBerri } from '@/store';
-import {
-  DecisionTrail,
-  LifecycleRibbon,
-  TopBar,
-} from '@/features/lifecycle';
+import { DecisionTrail, LifecycleRibbon, TopBar } from '@/features/lifecycle';
 import { QueueRail } from '@/features/queue';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import {
+  ExtractionSequence,
+  IntakeButton,
+  runExtraction,
+  useIntake,
+} from '@/features/intake';
+import { StalenessBanner } from '@/components';
+import { Maximize2, Minimize2, RotateCcw } from 'lucide-react';
+import { useState } from 'react';
 
 /**
- * The workstation. Full viewport, no document-style scrolling. Persistent
- * left queue + right decision trail; the canvas in the middle is the work
- * surface.
+ * The workstation. Full viewport, no document-style scrolling.
+ * Persistent left queue + right decision trail; the canvas in the
+ * middle is the work surface and swaps content by phase:
+ *
+ *   intake idle              → IntakeButton (centered)
+ *   receiving/reading/etc.   → ExtractionSequence (split layout)
  */
 export function Cockpit() {
   return (
@@ -46,6 +53,7 @@ function CanvasColumn() {
     >
       <CanvasSubject />
       <RibbonBand />
+      <StalenessBanner />
       <CanvasBody />
     </main>
   );
@@ -55,6 +63,9 @@ function CanvasSubject() {
   const submission = useRanBerri((s) => s.submission);
   const mode = useRanBerri((s) => s.ui.canvasMode);
   const setMode = useRanBerri((s) => s.setCanvasMode);
+  const phase = useIntake((s) => s.phase);
+  const [rerunning, setRerunning] = useState(false);
+
   return (
     <div
       className="hairline-b flex items-center justify-between"
@@ -95,24 +106,57 @@ function CanvasSubject() {
             color: 'var(--color-ink-mute)',
           }}
         >
-          {submission ? 'one canvas per risk' : 'awaiting submission from queue'}
+          {submission
+            ? phase === 'complete'
+              ? 'extraction settled'
+              : 'one canvas per risk'
+            : 'awaiting submission from queue'}
         </span>
       </div>
-      <div className="flex items-center gap-1">
-        <ModeButton
-          active={mode === 'compact'}
-          onClick={() => setMode('compact')}
-          title="Compact"
-        >
-          <Minimize2 size={13} strokeWidth={1.5} />
-        </ModeButton>
-        <ModeButton
-          active={mode === 'expanded'}
-          onClick={() => setMode('expanded')}
-          title="Expanded"
-        >
-          <Maximize2 size={13} strokeWidth={1.5} />
-        </ModeButton>
+      <div className="flex items-center gap-3">
+        {submission && phase === 'complete' && (
+          <button
+            type="button"
+            onClick={async () => {
+              if (rerunning) return;
+              setRerunning(true);
+              try {
+                await runExtraction({ rerun: true });
+              } finally {
+                setRerunning(false);
+              }
+            }}
+            disabled={rerunning}
+            className="inline-flex items-center gap-1.5"
+            style={{
+              padding: '4px 8px',
+              borderRadius: 'var(--radius-button)',
+              fontFamily: 'var(--font-serif)',
+              fontStyle: 'italic',
+              fontSize: 12.5,
+              color: rerunning ? 'var(--color-ink-faint)' : 'var(--color-accent)',
+            }}
+          >
+            <RotateCcw size={11} strokeWidth={1.5} />
+            <span>rerun extraction</span>
+          </button>
+        )}
+        <div className="flex items-center gap-1">
+          <ModeButton
+            active={mode === 'compact'}
+            onClick={() => setMode('compact')}
+            title="Compact"
+          >
+            <Minimize2 size={13} strokeWidth={1.5} />
+          </ModeButton>
+          <ModeButton
+            active={mode === 'expanded'}
+            onClick={() => setMode('expanded')}
+            title="Expanded"
+          >
+            <Maximize2 size={13} strokeWidth={1.5} />
+          </ModeButton>
+        </div>
       </div>
     </div>
   );
@@ -166,136 +210,13 @@ function RibbonBand() {
 }
 
 function CanvasBody() {
-  const submission = useRanBerri((s) => s.submission);
-  if (submission) return <ActiveBody />;
-  return <EmptyBody />;
-}
-
-function ActiveBody() {
-  return (
-    <div
-      style={{
-        flex: 1,
-        overflow: 'auto',
-        padding: '24px 28px',
-      }}
-    >
-      <div
-        className="hairline"
-        style={{
-          padding: 16,
-          borderRadius: 'var(--radius-card)',
-          background: 'var(--color-surface)',
-        }}
-      >
-        <div className="eyebrow mb-2">canvas body</div>
-        <p
-          className="serif"
-          style={{
-            fontStyle: 'italic',
-            fontSize: 13,
-            color: 'var(--color-ink-mute)',
-            margin: 0,
-          }}
-        >
-          Module&nbsp;2 fills this surface with the broker email, the
-          extraction margin, and the sealed slip.
-        </p>
+  const phase = useIntake((s) => s.phase);
+  if (phase === 'idle') {
+    return (
+      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        <IntakeButton />
       </div>
-    </div>
-  );
-}
-
-function EmptyBody() {
-  return (
-    <div
-      style={{
-        flex: 1,
-        overflow: 'auto',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '40px 28px',
-      }}
-    >
-      <div style={{ maxWidth: 560, textAlign: 'left' }}>
-        <div className="eyebrow mb-3">no submission active</div>
-        <h2
-          className="serif"
-          style={{
-            fontSize: 28,
-            fontWeight: 400,
-            letterSpacing: '-0.018em',
-            margin: 0,
-            color: 'var(--color-ink)',
-            lineHeight: 1.15,
-          }}
-        >
-          The underwriter&rsquo;s{' '}
-          <em
-            style={{
-              fontStyle: 'italic',
-              color: 'var(--color-accent)',
-              fontWeight: 400,
-            }}
-          >
-            cockpit
-          </em>
-          , not another orchestration layer.
-        </h2>
-        <p
-          className="serif"
-          style={{
-            fontSize: 15,
-            lineHeight: 1.55,
-            color: 'var(--color-ink-soft)',
-            marginTop: 14,
-            marginBottom: 0,
-            maxWidth: '54ch',
-          }}
-        >
-          One canvas per risk. AI proposes in the margin. Excel sealed
-          underneath. Audit trail as the spine.
-        </p>
-        <div
-          className="hairline-t mt-7 pt-4"
-          style={{
-            display: 'flex',
-            gap: 24,
-            color: 'var(--color-ink-mute)',
-            fontSize: 12,
-          }}
-        >
-          <Hint
-            label="next"
-            body={'A broker email arrives in the queue (module 2).'}
-          />
-          <Hint
-            label="then"
-            body="Extraction unfolds in the margin; the slip stays sealed."
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Hint({ label, body }: { label: string; body: string }) {
-  return (
-    <div style={{ flex: 1 }}>
-      <div className="eyebrow mb-1">{label}</div>
-      <p
-        className="serif"
-        style={{
-          fontStyle: 'italic',
-          fontSize: 12.5,
-          color: 'var(--color-ink-mute)',
-          margin: 0,
-          lineHeight: 1.5,
-        }}
-      >
-        {body}
-      </p>
-    </div>
-  );
+    );
+  }
+  return <ExtractionSequence />;
 }

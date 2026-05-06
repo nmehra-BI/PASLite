@@ -1,18 +1,31 @@
 import { useRanBerri } from '@/store';
 import type { AuditEvent } from '@/lib/audit';
+import { ALL_ARTIFACTS, type ArtifactKey } from '@/lib/deps';
 
 const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'submission.received': 'Submission received',
+  'email.received': 'Email received',
   'extraction.started': 'Extraction started',
+  'extraction.fieldExtracted': 'Field extracted',
   'extraction.completed': 'Extraction completed',
+  'extraction.rerun': 'Extraction rerun',
   'enrichment.completed': 'Enrichment completed',
   'conflict.flagged': 'Conflict flagged',
+  'gap.flagged': 'Gap flagged',
   'field.corrected': 'Field corrected',
   'rating.computed': 'Rating computed',
   'quote.issued': 'Quote issued',
   'recommendation.generated': 'Recommendation generated',
   'decision.recorded': 'Decision recorded',
   'artifact.stale': 'Artifact marked stale',
+};
+
+const ARTIFACT_LABEL: Record<ArtifactKey, string> = {
+  enrichment: 'Enrichment',
+  conflicts: 'Conflicts',
+  rating: 'Rating',
+  quote: 'Quote',
+  recommendation: 'Recommendation',
 };
 
 function formatActor(actor: AuditEvent['actor']): string {
@@ -25,19 +38,80 @@ function formatTime(iso: string): string {
   const d = new Date(iso);
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+function dotTone(kind: AuditEvent['kind']): string {
+  if (kind === 'gap.flagged' || kind === 'conflict.flagged' || kind === 'artifact.stale')
+    return 'var(--color-warn)';
+  if (kind === 'field.corrected') return 'var(--color-accent)';
+  if (kind === 'extraction.completed' || kind === 'rating.computed' || kind === 'quote.issued')
+    return 'var(--color-success)';
+  return 'var(--color-ink)';
+}
+
+/**
+ * The trail aggregates duplicates that fire in the same second
+ * (e.g. 12 extraction.fieldExtracted events). Field-level events get
+ * collapsed into a single row that shows the count + average
+ * confidence; the underlying log is untouched.
+ */
+type EventEntry = {
+  kind: 'event';
+  event: AuditEvent;
+  count?: number;
+  subtitle?: string;
+};
+
+function aggregate(log: AuditEvent[]): EventEntry[] {
+  // Skip extraction.fieldExtracted entries; they are already summarised
+  // by extraction.completed (count + avg confidence). Showing them
+  // individually would flood the rail.
+  const filtered = log.filter((e) => e.kind !== 'extraction.fieldExtracted');
+  return filtered.map((event) => {
+    if (event.kind === 'extraction.completed') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.fieldCount} fields · avg conf ${(event.avgConfidence * 100).toFixed(0)}%`,
+      };
+    }
+    if (event.kind === 'gap.flagged') {
+      return { kind: 'event', event, subtitle: event.description };
+    }
+    if (event.kind === 'field.corrected') {
+      return { kind: 'event', event, subtitle: event.fieldPath };
+    }
+    if (event.kind === 'artifact.stale') {
+      return { kind: 'event', event, subtitle: event.artifact };
+    }
+    if (event.kind === 'extraction.rerun') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.preservedCorrections} corrections preserved`,
+      };
+    }
+    return { kind: 'event', event };
+  });
 }
 
 type Props = {
-  /** Position in the workstation: left rail (default) or right rail. */
   side?: 'left' | 'right';
-  /** Width of the rail. */
   width?: number;
 };
 
 export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
   const log = useRanBerri((s) => s.auditLog);
+  const artifacts = useRanBerri((s) => s.artifacts);
+  const submission = useRanBerri((s) => s.submission);
   const borderClass = side === 'right' ? 'hairline-l' : 'hairline-r';
+
+  const entries = aggregate(log);
+  const pendingArtifacts = submission
+    ? ALL_ARTIFACTS.filter((k) => artifacts[k].computedAt === null)
+    : [];
 
   return (
     <aside
@@ -64,7 +138,7 @@ export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
             letterSpacing: '0.06em',
           }}
         >
-          {log.length} events
+          {entries.length} events
         </span>
       </div>
 
@@ -84,7 +158,7 @@ export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '0 16px 16px' }}>
-        {log.length === 0 ? (
+        {entries.length === 0 && pendingArtifacts.length === 0 ? (
           <EmptyTrail />
         ) : (
           <ol
@@ -102,53 +176,11 @@ export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
               }}
               aria-hidden
             />
-            {log.map((evt) => (
-              <li
-                key={evt.id}
-                className="relative"
-                style={{ paddingLeft: 22, paddingBottom: 14 }}
-              >
-                <span
-                  className="absolute"
-                  style={{
-                    left: 3,
-                    top: 6,
-                    width: 7,
-                    height: 7,
-                    borderRadius: 999,
-                    background: 'var(--color-surface)',
-                    border: '0.5px solid var(--color-rule-mid)',
-                  }}
-                  aria-hidden
-                />
-                <div
-                  className="flex items-baseline justify-between"
-                  style={{ fontSize: 12, color: 'var(--color-ink)' }}
-                >
-                  <span style={{ fontWeight: 500 }}>{KIND_LABEL[evt.kind]}</span>
-                  <span
-                    className="mono"
-                    style={{
-                      fontSize: 10,
-                      color: 'var(--color-ink-faint)',
-                      letterSpacing: '0.04em',
-                    }}
-                  >
-                    {formatTime(evt.at)}
-                  </span>
-                </div>
-                <div
-                  className="serif"
-                  style={{
-                    fontStyle: 'italic',
-                    fontSize: 11.5,
-                    color: 'var(--color-ink-mute)',
-                    marginTop: 2,
-                  }}
-                >
-                  {formatActor(evt.actor)}
-                </div>
-              </li>
+            {entries.map((entry, i) => (
+              <EventRow key={i} entry={entry} />
+            ))}
+            {pendingArtifacts.map((k) => (
+              <PendingRow key={`p-${k}`} artifact={k} />
             ))}
           </ol>
         )}
@@ -176,6 +208,98 @@ export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
         </p>
       </div>
     </aside>
+  );
+}
+
+function EventRow({ entry }: { entry: EventEntry }) {
+  const evt = entry.event;
+  const tone = dotTone(evt.kind);
+  return (
+    <li className="relative" style={{ paddingLeft: 22, paddingBottom: 14 }}>
+      <span
+        className="absolute"
+        style={{
+          left: 2,
+          top: 5,
+          width: 9,
+          height: 9,
+          borderRadius: 999,
+          background: tone,
+          border: `0.5px solid ${tone}`,
+        }}
+        aria-hidden
+      />
+      <div
+        className="flex items-baseline justify-between"
+        style={{ fontSize: 12, color: 'var(--color-ink)' }}
+      >
+        <span style={{ fontWeight: 500 }}>{KIND_LABEL[evt.kind]}</span>
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            color: 'var(--color-ink-faint)',
+            letterSpacing: '0.04em',
+          }}
+        >
+          {formatTime(evt.at)}
+        </span>
+      </div>
+      <div
+        className="serif"
+        style={{
+          fontStyle: 'italic',
+          fontSize: 11.5,
+          color: 'var(--color-ink-mute)',
+          marginTop: 2,
+        }}
+      >
+        {entry.subtitle ?? formatActor(evt.actor)}
+      </div>
+    </li>
+  );
+}
+
+function PendingRow({ artifact }: { artifact: ArtifactKey }) {
+  return (
+    <li
+      className="relative"
+      style={{ paddingLeft: 22, paddingBottom: 12, opacity: 0.7 }}
+    >
+      <span
+        className="absolute"
+        style={{
+          left: 2,
+          top: 5,
+          width: 9,
+          height: 9,
+          borderRadius: 999,
+          background: 'var(--color-surface)',
+          border: '0.5px solid var(--color-rule-mid)',
+        }}
+        aria-hidden
+      />
+      <div className="flex items-baseline justify-between">
+        <span
+          style={{
+            fontSize: 12,
+            color: 'var(--color-ink-mute)',
+          }}
+        >
+          {ARTIFACT_LABEL[artifact]}
+        </span>
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            color: 'var(--color-ink-faint)',
+            letterSpacing: '0.04em',
+          }}
+        >
+          pending
+        </span>
+      </div>
+    </li>
   );
 }
 

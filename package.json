@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "date-fns": "^4.1.0",
+    "framer-motion": "^12.38.0",
     "immer": "^10.1.1",
     "lucide-react": "^0.469.0",
     "react": "^19.0.0",

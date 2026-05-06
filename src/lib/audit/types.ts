@@ -24,8 +24,12 @@ export type AuditEventBase = {
 export type AuditEvent = AuditEventBase &
   (
     | { kind: 'submission.received'; submissionId: string; broker: string }
+    | { kind: 'email.received'; submissionId: string; broker: string; subject: string }
     | { kind: 'extraction.started'; submissionId: string }
-    | { kind: 'extraction.completed'; submissionId: string; fieldCount: number }
+    | { kind: 'extraction.fieldExtracted'; submissionId: string; fieldPath: string; confidence: number }
+    | { kind: 'extraction.completed'; submissionId: string; fieldCount: number; avgConfidence: number }
+    | { kind: 'extraction.rerun'; submissionId: string; preservedCorrections: number }
+    | { kind: 'gap.flagged'; submissionId: string; fieldPath: string; description: string }
     | { kind: 'enrichment.completed'; submissionId: string; sources: string[] }
     | { kind: 'conflict.flagged'; submissionId: string; fieldPath: string }
     | { kind: 'field.corrected'; submissionId: string; fieldPath: string; reason: string }

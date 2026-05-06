@@ -67,6 +67,37 @@ the human disagreed.
   layer&rdquo; framing and the lifecycle ribbon as a card. Use this view
   for screenshots; the cockpit is the working product.
 
+### Module 2 — submission intake + extraction
+
+- **Greenline fixture** (`src/lib/fixtures/greenline.ts`): a complete
+  UK W&amp;R submission &mdash; broker email, four-page ACORD slip with
+  numbered lines, 5-year loss runs, three EA permits. Deliberately
+  carries one disclosure gap (fire suppression) and a downstream
+  arithmetic inconsistency (loss-ratio summary that doesn&rsquo;t
+  reconcile) for module 3 to surface.
+- **Cinematic extraction**: one button on the empty canvas (&ldquo;Receive
+  new submission&rdquo;) launches a ~4-second sequence. The slip pages
+  flash, source lines highlight in real time as fields resolve in the
+  margin, confidence dots animate in tone-coded by threshold
+  (&ge;0.95 success, &ge;0.85 warn, &lt;0.85 danger). The fire-suppression
+  gap pulses warn briefly to draw attention.
+- **Editorial extracted view**: the AI&rsquo;s voice presenting its
+  work &mdash; mono section headers, italic serif marginalia, source
+  citations on hover. Not a generic dashboard.
+- **Inspector + inline correction**: every extracted value is clickable;
+  the inspector shows all three Field<T> layers and a &ldquo;correct
+  this&rdquo; affordance. Saving fires `applyCorrection`, which walks
+  the dependency graph, invalidates only the affected artifacts, emits
+  audit events, and shows a marginalia note (&ldquo;corrected from
+  &pound;8,420,000&rdquo;) on the canvas. A staleness banner appears
+  above the body until downstream artifacts are rerun.
+- **Re-extraction**: an italic &ldquo;rerun extraction&rdquo; link on the
+  canvas header replays the sequence; it overwrites the system layer
+  but preserves every underwriter correction in the new tree.
+- **Decision trail**: chronological audit events with tone-coded dots,
+  followed by pending-artifact rows for the stages module 3-5 will
+  populate.
+
 ## What&rsquo;s planned
 
 - **Module 2** &mdash; submission intake &amp; field extraction

@@ -1,11 +1,12 @@
 import type { Field } from '@/lib/field';
 
 /**
- * Submission domain types for the Greenline test fixture.
+ * Submission domain types. Module 1 declared the shape; module 2 adds
+ * the fields the Greenline fixture and extraction schedule populate.
  *
- * Module 1 only declares the shape — the populated fixture (Greenline
- * Recycling Ltd, broker email + slip) lands in module 2 alongside the
- * intake / extraction flow.
+ * Keep added fields additive &mdash; module 1's dep graph and store
+ * already operate against this shape, so removing or renaming an
+ * existing field is a breaking change that must be coordinated.
  */
 
 export type Address = {
@@ -15,12 +16,16 @@ export type Address = {
   postcode: string;
 };
 
+/**
+ * One operating site on the policy. Each site is named, sized, and
+ * carries an environment-agency permit reference + expiry.
+ */
 export type Site = {
   id: string;
-  address: Field<Address>;
-  wasteStreams: Field<string[]>;
-  storageTonnage: Field<number>;
-  hasFireSuppression: Field<boolean>;
+  name: Field<string>;
+  sqm: Field<number>;
+  permitRef: Field<string>;
+  permitExpiry: Field<string>;
 };
 
 export type Insured = {
@@ -28,7 +33,10 @@ export type Insured = {
   tradingName: Field<string>;
   companiesHouseNumber: Field<string>;
   yearsTrading: Field<number>;
+  /** FY24 turnover, the primary figure used by rating. */
   turnover: Field<number>;
+  /** FY23 turnover, kept for trend &amp; conflict checks. */
+  turnoverPrior: Field<number>;
 };
 
 export type Cover = {
@@ -37,6 +45,16 @@ export type Cover = {
   publicLiabilityLimit: Field<number>;
   employersLiabilityLimit: Field<number>;
   environmentalImpairmentLimit: Field<number>;
+  /** Free-text term, e.g. "12 months". */
+  term: Field<string>;
+};
+
+export type LossRun = {
+  year: number;
+  type: string;
+  amount: number;
+  status: 'paid' | 'open' | 'declined';
+  note?: string;
 };
 
 export type Submission = {
@@ -47,6 +65,13 @@ export type Submission = {
   insured: Insured;
   cover: Cover;
   sites: Site[];
+
+  // module 2 additions
+  materials: Field<string[]>;
+  fireSuppressionDisclosed: Field<boolean>;
+  lossRuns: Field<LossRun[]>;
+  statedLossRatio: Field<number>;
+  brokerTargetPremium: Field<number>;
 };
 
 /**

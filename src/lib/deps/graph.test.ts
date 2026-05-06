@@ -27,12 +27,24 @@ describe('affectedArtifacts', () => {
     );
   });
 
-  it('correcting a site storage tonnage invalidates rating and downstream', () => {
-    expect(affectedArtifacts('sites[0].storageTonnage')).toEqual(
+  it('correcting a site sqm invalidates rating and downstream', () => {
+    expect(affectedArtifacts('sites[0].sqm')).toEqual(
       new Set(['rating', 'quote', 'recommendation']),
     );
-    expect(affectedArtifacts('sites[7].storageTonnage')).toEqual(
+    expect(affectedArtifacts('sites[7].sqm')).toEqual(
       new Set(['rating', 'quote', 'recommendation']),
+    );
+  });
+
+  it('correcting a permit reference invalidates enrichment + conflicts + downstream', () => {
+    expect(affectedArtifacts('sites[0].permitRef')).toEqual(
+      new Set(['enrichment', 'conflicts', 'rating', 'quote', 'recommendation']),
+    );
+  });
+
+  it('correcting lossRuns invalidates conflicts + rating + downstream', () => {
+    expect(affectedArtifacts('lossRuns')).toEqual(
+      new Set(['conflicts', 'rating', 'quote', 'recommendation']),
     );
   });
 

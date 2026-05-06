@@ -32,6 +32,19 @@ export type ArtifactState = {
   computedAt: string | null;
 };
 
+/**
+ * Distributive Omit: applied to a discriminated union, removes the
+ * given keys from each member individually so the variant tags stay
+ * exclusive.
+ */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
+  ? Omit<T, K>
+  : never;
+
+export type NewAuditEvent = DistributiveOmit<AuditEvent, 'id' | 'at'> & {
+  at?: string;
+};
+
 export type RanBerriState = {
   submission: Submission | null;
   auditLog: AuditEvent[];
@@ -46,9 +59,7 @@ export type RanBerriState = {
 
   // Actions
   setSubmission: (submission: Submission) => void;
-  appendAuditEvent: (
-    event: Omit<AuditEvent, 'id' | 'at'> & { at?: string },
-  ) => void;
+  appendAuditEvent: (event: NewAuditEvent) => void;
 
   /**
    * Apply an underwriter correction to a field at the given path:
@@ -210,6 +221,12 @@ export const useRanBerri = create<RanBerriState>()(
       name: 'ranberri.v0',
       version: 1,
       storage: createJSONStorage(() => safeStorage()),
+      // Persist only stable UI prefs. Submission / audit log / artifact
+      // freshness are session-bound — refresh starts the demo clean.
+      partialize: (state) => ({
+        lifecycle: state.lifecycle,
+        ui: state.ui,
+      }),
     },
   ),
 );

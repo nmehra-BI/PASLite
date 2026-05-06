@@ -21,6 +21,7 @@ function buildSubmission(): Submission {
         extractedAt: '2026-05-06T08:30:00Z',
         modelVersion: 'sonnet-4-7',
       }),
+      turnoverPrior: createField(7_910_000),
     },
     cover: {
       inceptionDate: createField('2026-06-01'),
@@ -28,8 +29,14 @@ function buildSubmission(): Submission {
       publicLiabilityLimit: createField(5_000_000),
       employersLiabilityLimit: createField(10_000_000),
       environmentalImpairmentLimit: createField(2_000_000),
+      term: createField('12 months'),
     },
     sites: [],
+    materials: createField<string[]>(['paper']),
+    fireSuppressionDisclosed: createField(false),
+    lossRuns: createField([]),
+    statedLossRatio: createField(0.38),
+    brokerTargetPremium: createField(45_000),
   };
 }
 
