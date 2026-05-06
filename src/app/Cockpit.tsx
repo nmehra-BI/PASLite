@@ -9,6 +9,7 @@ import {
 } from '@/features/intake';
 import { TerminalBanner } from '@/features/triage';
 import { QuoteSentBanner } from '@/features/quote';
+import { PendingActionBanner } from '@/features/recommendation';
 import { StalenessBanner } from '@/components';
 import { Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
@@ -57,6 +58,7 @@ function CanvasColumn() {
       <RibbonBand />
       <TerminalBanner />
       <QuoteSentBanner />
+      <PendingActionBanner />
       <StalenessBanner />
       <CanvasBody />
     </main>

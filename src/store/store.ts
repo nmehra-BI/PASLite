@@ -18,6 +18,7 @@ import {
   freshEnrichment,
   freshQuote,
   freshRating,
+  freshRecommendation,
   freshTriage,
   replay,
   type ArtifactState,
@@ -25,6 +26,7 @@ import {
   type EnrichmentReplayState,
   type QuoteReplay,
   type RatingReplay,
+  type RecommendationReplay,
   type ReferralRecord,
   type SourceStatus,
   type SubmissionLifecycleState,
@@ -66,6 +68,7 @@ export type RanBerriState = {
   triage: TriageReplayState;
   rating: RatingReplay;
   quote: QuoteReplay;
+  recommendation: RecommendationReplay;
   submissionState: SubmissionLifecycleState;
   referral: ReferralRecord | null;
   decline: DeclineRecord | null;
@@ -195,6 +198,17 @@ export type RanBerriState = {
   /** Recall a sent quote (placeholder for v0.2). */
   recallQuote: (recalledBy: string) => void;
 
+  /**
+   * Act on the recommendation: bind / refer / ntu. Each action emits
+   * `recommendation.actedUpon` plus a state-advance event. For bind,
+   * lifecycle.now advances to the Bind milestone. Module 7 (NTU) and
+   * module 8 (bind ceremony) take over from these placeholders.
+   */
+  actOnRecommendation: (input: {
+    action: 'bind' | 'refer' | 'ntu';
+    actedBy: string;
+  }) => void;
+
   scrubLifecycle: (milestone: LifecycleMilestone) => void;
   setCanvasMode: (mode: 'closed' | 'compact' | 'expanded') => void;
   reset: () => void;
@@ -246,6 +260,7 @@ export const useRanBerri = create<RanBerriState>()(
       triage: freshTriage(),
       rating: freshRating(),
       quote: freshQuote(),
+      recommendation: freshRecommendation(),
       submissionState: 'active',
       referral: null,
       decline: null,
@@ -643,6 +658,67 @@ export const useRanBerri = create<RanBerriState>()(
         });
       },
 
+      actOnRecommendation: (input) => {
+        const submission = get().submission;
+        if (!submission) {
+          throw new Error('actOnRecommendation: no active submission');
+        }
+        const state = get().submissionState;
+        if (state === 'referred' || state === 'declined') {
+          throw new Error('actOnRecommendation: submission is read-only');
+        }
+        const submissionId = submission.id;
+
+        // 1. Record the underwriter's intent against the recommendation.
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: input.actedBy },
+          kind: 'recommendation.actedUpon',
+          submissionId,
+          action: input.action,
+          actedBy: input.actedBy,
+        });
+
+        // 2. Advance the submission state. Bind and NTU are placeholder
+        //    state transitions for modules 7/8; refer reuses module 4's
+        //    submission.referred path via the existing referral modal.
+        if (input.action === 'bind') {
+          get().appendAuditEvent({
+            actor: { kind: 'system' },
+            kind: 'submission.advancedToBindPending',
+            submissionId,
+            actedBy: input.actedBy,
+          });
+          set((s) => {
+            s.lifecycle.now = 'bind';
+            s.lifecycle.cursor = 'bind';
+          });
+          if (typeof console !== 'undefined') {
+            // eslint-disable-next-line no-console
+            console.info(
+              '[module 8 placeholder] Bind ceremony will run here. State advanced to bind-pending.',
+              { submissionId },
+            );
+          }
+        } else if (input.action === 'ntu') {
+          get().appendAuditEvent({
+            actor: { kind: 'system' },
+            kind: 'submission.advancedToNtuPending',
+            submissionId,
+            actedBy: input.actedBy,
+          });
+          if (typeof console !== 'undefined') {
+            // eslint-disable-next-line no-console
+            console.info(
+              '[module 7 placeholder] NTU loss-capture will run here. State advanced to ntu-pending.',
+              { submissionId },
+            );
+          }
+        }
+        // 'refer' action does not advance state itself — the
+        // ReferralModal calls referToSenior which writes the
+        // submission.referred event.
+      },
+
       scrubLifecycle: (milestone) =>
         set((s) => {
           s.lifecycle.cursor = milestone;
@@ -662,6 +738,7 @@ export const useRanBerri = create<RanBerriState>()(
           s.triage = freshTriage();
           s.rating = freshRating();
           s.quote = freshQuote();
+          s.recommendation = freshRecommendation();
           s.submissionState = 'active';
           s.referral = null;
           s.decline = null;
@@ -690,6 +767,7 @@ export const useRanBerri = create<RanBerriState>()(
           merged.triage = result.triage;
           merged.rating = result.rating;
           merged.quote = result.quote;
+          merged.recommendation = result.recommendation;
           merged.submissionState = result.submissionState;
           merged.referral = result.referral;
           merged.decline = result.decline;
@@ -1046,6 +1124,77 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
     case 'email.streamFinished':
       // No materialised state mutation. The editor reads the log
       // directly to decide whether to skip the stream on mount.
+      break;
+
+    // ---------- recommendation ----------
+
+    case 'recommendation.started':
+      s.recommendation.phase = 'evaluating';
+      s.recommendation.factors = [];
+      s.recommendation.primary = null;
+      s.recommendation.confidence = null;
+      s.recommendation.headline = null;
+      s.recommendation.iteration = e.iteration;
+      s.recommendation.lastVerdictChange = null;
+      s.recommendation.action = null;
+      break;
+
+    case 'recommendation.factorEvaluated': {
+      const idx = s.recommendation.factors.findIndex((f) => f.id === e.factorId);
+      const next = {
+        id: e.factorId,
+        label: e.label,
+        vote: e.vote,
+        weight: e.weight,
+        rationale: e.rationale,
+        evidence: e.evidence,
+        metadata: e.metadata,
+        evaluatedAt: e.at,
+      };
+      if (idx >= 0) s.recommendation.factors[idx] = next;
+      else s.recommendation.factors.push(next);
+      break;
+    }
+
+    case 'recommendation.completed':
+      s.recommendation.phase = 'settled';
+      s.recommendation.primary = e.primary;
+      s.recommendation.confidence = e.confidence;
+      s.recommendation.headline = e.headline;
+      s.recommendation.similarBinderIds = e.similarBinderIds;
+      s.recommendation.similarLossIds = e.similarLossIds;
+      s.recommendation.competitorNames = e.competitorNames;
+      s.recommendation.completedAt = e.at;
+      break;
+
+    case 'recommendation.verdictChanged':
+      s.recommendation.lastVerdictChange = { from: e.from, to: e.to };
+      break;
+
+    case 'recommendation.rerun':
+      s.recommendation.phase = 'idle';
+      s.recommendation.factors = [];
+      s.recommendation.primary = null;
+      s.recommendation.confidence = null;
+      s.recommendation.headline = null;
+      s.recommendation.iteration = e.nextIteration;
+      s.recommendation.lastVerdictChange = null;
+      break;
+
+    case 'recommendation.actedUpon':
+      s.recommendation.action = {
+        kind: e.action,
+        actedBy: e.actedBy,
+        actedAt: e.at,
+      };
+      break;
+
+    case 'submission.advancedToBindPending':
+      s.submissionState = 'bind-pending';
+      break;
+
+    case 'submission.advancedToNtuPending':
+      s.submissionState = 'ntu-pending';
       break;
 
     case 'slip.fieldEdited':

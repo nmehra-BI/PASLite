@@ -7,6 +7,7 @@ import { EnrichmentSection } from '@/features/enrichment';
 import { TriageSection } from '@/features/triage';
 import { RatingSection } from '@/features/rating';
 import { QuoteSection } from '@/features/quote';
+import { RecommendationSection } from '@/features/recommendation';
 
 /**
  * The two-column composition that frames the cinematic extraction and,
@@ -75,6 +76,7 @@ export function ExtractionSequence() {
             <TriageSection />
             <RatingSection />
             <QuoteSection />
+            <RecommendationSection />
           </ExtractedView>
         )}
         <Inspector />

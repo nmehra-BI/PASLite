@@ -51,6 +51,14 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'quote.markedStale': 'Quote marked stale',
   'quote.issued': 'Quote issued',
   'recommendation.generated': 'Recommendation generated',
+  'recommendation.started': 'Recommendation started',
+  'recommendation.factorEvaluated': 'Recommendation factor evaluated',
+  'recommendation.completed': 'Recommendation completed',
+  'recommendation.verdictChanged': 'Recommendation verdict changed',
+  'recommendation.rerun': 'Recommendation rerun',
+  'recommendation.actedUpon': 'Recommendation acted upon',
+  'submission.advancedToBindPending': 'Submission advanced to bind-pending',
+  'submission.advancedToNtuPending': 'Submission advanced to NTU-pending',
   'decision.recorded': 'Decision recorded',
   'artifact.computed': 'Artifact computed',
   'artifact.stale': 'Artifact marked stale',
@@ -111,7 +119,10 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'conflict.dismissed' ||
     kind === 'gap.dismissed' ||
     kind === 'triage.completed' ||
-    kind === 'triage.passedToRating'
+    kind === 'triage.passedToRating' ||
+    kind === 'recommendation.completed' ||
+    kind === 'recommendation.actedUpon' ||
+    kind === 'submission.advancedToBindPending'
   )
     return 'var(--color-success)';
   return 'var(--color-ink)';
@@ -144,7 +155,8 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
       e.kind !== 'rating.cellComputed' &&
       e.kind !== 'slip.fieldEdited' &&
       e.kind !== 'email.edited' &&
-      e.kind !== 'email.streamFinished',
+      e.kind !== 'email.streamFinished' &&
+      e.kind !== 'recommendation.factorEvaluated',
   );
   return filtered.map((event) => {
     if (event.kind === 'extraction.completed') {
@@ -289,6 +301,27 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
     }
     if (event.kind === 'quote.markedStale') {
       return { kind: 'event', event, subtitle: event.reason };
+    }
+    if (event.kind === 'recommendation.completed') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.primary.toUpperCase()} · ${event.confidence} confidence`,
+      };
+    }
+    if (event.kind === 'recommendation.verdictChanged') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.from.toUpperCase()} → ${event.to.toUpperCase()}`,
+      };
+    }
+    if (event.kind === 'recommendation.actedUpon') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: event.action,
+      };
     }
     return { kind: 'event', event };
   });

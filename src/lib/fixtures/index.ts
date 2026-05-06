@@ -55,3 +55,10 @@ export {
   getCapacityLedger,
 } from './capacityLedger';
 export type { CapacityLedger } from './capacityLedger';
+
+export { getHistoricalBinders } from './historicalBinders';
+export type { HistoricalBinder } from './historicalBinders';
+export { getLossesToCompetitors } from './lossesToCompetitors';
+export type { LossToCompetitor } from './lossesToCompetitors';
+export { getCompetitiveIntel } from './competitiveIntel';
+export type { CompetitorProfile } from './competitiveIntel';

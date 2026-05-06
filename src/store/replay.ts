@@ -238,6 +238,57 @@ export function freshQuote(): QuoteReplay {
   };
 }
 
+// ---------- recommendation-derived state ----------
+
+export type RecommendationFactorRecord = {
+  id: string;
+  label: string;
+  vote: 'pro-bind' | 'pro-ntu' | 'pro-refer' | 'neutral';
+  weight: 'high' | 'moderate' | 'low';
+  rationale: string;
+  evidence: {
+    binderIds?: string[];
+    lossIds?: string[];
+    ratingCells?: string[];
+    competitorNames?: string[];
+  };
+  metadata?: unknown;
+  evaluatedAt: string;
+};
+
+export type RecommendationReplay = {
+  phase: 'idle' | 'evaluating' | 'settled';
+  factors: RecommendationFactorRecord[];
+  primary: 'bind' | 'refer' | 'ntu' | null;
+  confidence: 'high' | 'moderate' | 'low' | null;
+  headline: string | null;
+  similarBinderIds: string[];
+  similarLossIds: string[];
+  competitorNames: string[];
+  completedAt: string | null;
+  iteration: number;
+  lastVerdictChange: { from: 'bind' | 'refer' | 'ntu'; to: 'bind' | 'refer' | 'ntu' } | null;
+  /** Captured when the underwriter clicks one of the 3 terminal buttons. */
+  action: { kind: 'bind' | 'refer' | 'ntu'; actedBy: string; actedAt: string } | null;
+};
+
+export function freshRecommendation(): RecommendationReplay {
+  return {
+    phase: 'idle',
+    factors: [],
+    primary: null,
+    confidence: null,
+    headline: null,
+    similarBinderIds: [],
+    similarLossIds: [],
+    competitorNames: [],
+    completedAt: null,
+    iteration: 1,
+    lastVerdictChange: null,
+    action: null,
+  };
+}
+
 // ---------- submission lifecycle state ----------
 
 export type SubmissionLifecycleState =
@@ -245,7 +296,9 @@ export type SubmissionLifecycleState =
   | 'rating-pending'
   | 'referred'
   | 'declined'
-  | 'quote-sent';
+  | 'quote-sent'
+  | 'bind-pending'
+  | 'ntu-pending';
 
 export type ReferralRecord = {
   reviewer: string;
@@ -273,6 +326,7 @@ export type ReplayResult = {
   triage: TriageReplayState;
   rating: RatingReplay;
   quote: QuoteReplay;
+  recommendation: RecommendationReplay;
   submissionState: SubmissionLifecycleState;
   referral: ReferralRecord | null;
   decline: DeclineRecord | null;
@@ -327,6 +381,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
   const triage = freshTriage();
   const rating = freshRating();
   const quote = freshQuote();
+  const recommendation = freshRecommendation();
   let submissionState: SubmissionLifecycleState = 'active';
   let referral: ReferralRecord | null = null;
   let decline: DeclineRecord | null = null;
@@ -792,6 +847,77 @@ export function replay(events: AuditEvent[]): ReplayResult {
         }
         break;
 
+      // ---------- recommendation ----------
+
+      case 'recommendation.started':
+        recommendation.phase = 'evaluating';
+        recommendation.factors = [];
+        recommendation.primary = null;
+        recommendation.confidence = null;
+        recommendation.headline = null;
+        recommendation.iteration = e.iteration;
+        recommendation.lastVerdictChange = null;
+        recommendation.action = null;
+        break;
+
+      case 'recommendation.factorEvaluated': {
+        const idx = recommendation.factors.findIndex((f) => f.id === e.factorId);
+        const next: RecommendationFactorRecord = {
+          id: e.factorId,
+          label: e.label,
+          vote: e.vote,
+          weight: e.weight,
+          rationale: e.rationale,
+          evidence: e.evidence,
+          metadata: e.metadata,
+          evaluatedAt: e.at,
+        };
+        if (idx >= 0) recommendation.factors[idx] = next;
+        else recommendation.factors.push(next);
+        break;
+      }
+
+      case 'recommendation.completed':
+        recommendation.phase = 'settled';
+        recommendation.primary = e.primary;
+        recommendation.confidence = e.confidence;
+        recommendation.headline = e.headline;
+        recommendation.similarBinderIds = e.similarBinderIds;
+        recommendation.similarLossIds = e.similarLossIds;
+        recommendation.competitorNames = e.competitorNames;
+        recommendation.completedAt = e.at;
+        break;
+
+      case 'recommendation.verdictChanged':
+        recommendation.lastVerdictChange = { from: e.from, to: e.to };
+        break;
+
+      case 'recommendation.rerun':
+        recommendation.phase = 'idle';
+        recommendation.factors = [];
+        recommendation.primary = null;
+        recommendation.confidence = null;
+        recommendation.headline = null;
+        recommendation.iteration = e.nextIteration;
+        recommendation.lastVerdictChange = null;
+        break;
+
+      case 'recommendation.actedUpon':
+        recommendation.action = {
+          kind: e.action,
+          actedBy: e.actedBy,
+          actedAt: e.at,
+        };
+        break;
+
+      case 'submission.advancedToBindPending':
+        submissionState = 'bind-pending';
+        break;
+
+      case 'submission.advancedToNtuPending':
+        submissionState = 'ntu-pending';
+        break;
+
       // Pass-through:
       case 'submission.received':
       case 'gap.flagged':
@@ -812,6 +938,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
     triage,
     rating,
     quote,
+    recommendation,
     submissionState,
     referral,
     decline,

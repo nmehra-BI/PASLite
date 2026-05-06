@@ -344,6 +344,50 @@ export type AuditEvent = AuditEventBase &
         submissionId: string;
         verdict: 'bind' | 'refer' | 'decline';
       }
+
+    // Recommendation phase (module 6)
+    | { kind: 'recommendation.started'; submissionId: string; iteration: number }
+    | {
+        kind: 'recommendation.factorEvaluated';
+        submissionId: string;
+        factorId: string;
+        label: string;
+        vote: 'pro-bind' | 'pro-ntu' | 'pro-refer' | 'neutral';
+        weight: 'high' | 'moderate' | 'low';
+        rationale: string;
+        evidence: {
+          binderIds?: string[];
+          lossIds?: string[];
+          ratingCells?: string[];
+          competitorNames?: string[];
+        };
+        metadata?: unknown;
+      }
+    | {
+        kind: 'recommendation.completed';
+        submissionId: string;
+        primary: 'bind' | 'refer' | 'ntu';
+        confidence: 'high' | 'moderate' | 'low';
+        headline: string;
+        similarBinderIds: string[];
+        similarLossIds: string[];
+        competitorNames: string[];
+      }
+    | {
+        kind: 'recommendation.verdictChanged';
+        submissionId: string;
+        from: 'bind' | 'refer' | 'ntu';
+        to: 'bind' | 'refer' | 'ntu';
+      }
+    | { kind: 'recommendation.rerun'; submissionId: string; nextIteration: number }
+    | {
+        kind: 'recommendation.actedUpon';
+        submissionId: string;
+        action: 'bind' | 'refer' | 'ntu';
+        actedBy: string;
+      }
+    | { kind: 'submission.advancedToBindPending'; submissionId: string; actedBy: string }
+    | { kind: 'submission.advancedToNtuPending'; submissionId: string; actedBy: string }
     | {
         kind: 'decision.recorded';
         submissionId: string;
