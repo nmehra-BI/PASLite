@@ -28,35 +28,27 @@ export function CheckRow({ record, checkId, readOnly = false }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const isEvaluating = !record;
-  const effective = record?.override?.outcome ?? record?.outcome ?? null;
+  // The row's primary glyph + status pill keep the ORIGINAL outcome
+  // visible — provenance matters. The override appears as a separate
+  // appendix to the right so both states are read at once.
+  const original = record?.outcome ?? null;
+  const overrideOutcome = record?.override?.outcome ?? null;
+  const hasOverride = overrideOutcome !== null;
+  const effective = overrideOutcome ?? original;
   const ruleIds = record?.ruleIds ?? [];
 
-  const tone =
-    effective === 'pass'
-      ? 'success'
-      : effective === 'refer'
-        ? 'warn'
-        : effective === 'decline'
-          ? 'danger'
-          : 'neutral';
+  const originalTone = toneFor(original);
+  const effectiveTone = toneFor(effective);
 
-  const Glyph =
-    isEvaluating
-      ? Loader2
-      : effective === 'pass'
-        ? Check
-        : effective === 'refer'
-          ? AlertTriangle
-          : XCircle;
+  const Glyph = isEvaluating
+    ? Loader2
+    : original === 'pass'
+      ? Check
+      : original === 'refer'
+        ? AlertTriangle
+        : XCircle;
 
-  const glyphColor =
-    tone === 'success'
-      ? 'var(--color-success)'
-      : tone === 'warn'
-        ? 'var(--color-warn)'
-        : tone === 'danger'
-          ? 'var(--color-danger)'
-          : 'var(--color-ink-faint)';
+  const glyphColor = colorFor(originalTone);
 
   return (
     <div
@@ -100,22 +92,52 @@ export function CheckRow({ record, checkId, readOnly = false }: Props) {
         </span>
         <span
           style={{
-            fontSize: 12.5,
-            color:
-              tone === 'warn'
-                ? 'var(--color-warn)'
-                : tone === 'danger'
-                  ? 'var(--color-danger)'
-                  : tone === 'success'
-                    ? 'var(--color-ink)'
-                    : 'var(--color-ink-mute)',
-            fontWeight: effective ? 500 : 400,
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            width: 64,
+            display: 'inline-flex',
+            alignItems: 'baseline',
+            gap: 6,
+            width: 140,
           }}
         >
-          {isEvaluating ? '…' : effective ?? ''}
+          <span
+            style={{
+              fontSize: 12.5,
+              color: colorFor(originalTone, 'pill'),
+              fontWeight: original ? 500 : 400,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              textDecoration: hasOverride ? 'line-through' : 'none',
+              textDecorationColor: 'var(--color-ink-faint)',
+              opacity: hasOverride ? 0.7 : 1,
+            }}
+          >
+            {isEvaluating ? '…' : original ?? ''}
+          </span>
+          {hasOverride && overrideOutcome && (
+            <>
+              <span
+                className="serif"
+                style={{
+                  fontStyle: 'italic',
+                  fontSize: 11,
+                  color: 'var(--color-accent)',
+                  letterSpacing: '-0.005em',
+                }}
+              >
+                overridden →
+              </span>
+              <span
+                style={{
+                  fontSize: 12.5,
+                  color: colorFor(effectiveTone, 'pill'),
+                  fontWeight: 500,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {overrideOutcome}
+              </span>
+            </>
+          )}
         </span>
         <span
           className="serif"
@@ -127,18 +149,6 @@ export function CheckRow({ record, checkId, readOnly = false }: Props) {
           }}
         >
           {isEvaluating ? 'evaluating…' : record?.rationale ?? ''}
-          {record?.override && (
-            <span
-              className="serif"
-              style={{
-                fontStyle: 'italic',
-                color: 'var(--color-accent)',
-                marginLeft: 8,
-              }}
-            >
-              · overridden → {record.override.outcome}
-            </span>
-          )}
         </span>
         <span
           className="mono"
@@ -179,4 +189,21 @@ export function CheckRow({ record, checkId, readOnly = false }: Props) {
       </AnimatePresence>
     </div>
   );
+}
+
+type Tone = 'success' | 'warn' | 'danger' | 'neutral';
+
+function toneFor(outcome: 'pass' | 'refer' | 'decline' | null): Tone {
+  if (outcome === 'pass') return 'success';
+  if (outcome === 'refer') return 'warn';
+  if (outcome === 'decline') return 'danger';
+  return 'neutral';
+}
+
+function colorFor(tone: Tone, kind: 'glyph' | 'pill' = 'glyph'): string {
+  if (tone === 'success')
+    return kind === 'pill' ? 'var(--color-ink)' : 'var(--color-success)';
+  if (tone === 'warn') return 'var(--color-warn)';
+  if (tone === 'danger') return 'var(--color-danger)';
+  return kind === 'pill' ? 'var(--color-ink-mute)' : 'var(--color-ink-faint)';
 }

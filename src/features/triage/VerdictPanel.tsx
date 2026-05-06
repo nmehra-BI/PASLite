@@ -10,6 +10,8 @@ type Props = {
   checks: TriageCheckRecord[];
   verdict: TriageOutcome;
   readOnly: boolean;
+  /** True when the triage artifact is stale (an upstream change happened). */
+  isStale?: boolean;
   /** "PASS → REFER" notice, rendered when an override or rerun changed the verdict. */
   verdictChanged: { from: TriageOutcome; to: TriageOutcome; cause: string } | null;
 };
@@ -20,7 +22,13 @@ const PRIMARY_BY_VERDICT: Record<TriageOutcome, 'proceed' | 'refer' | 'decline'>
   decline: 'decline',
 };
 
-export function VerdictPanel({ checks, verdict, readOnly, verdictChanged }: Props) {
+export function VerdictPanel({
+  checks,
+  verdict,
+  readOnly,
+  isStale = false,
+  verdictChanged,
+}: Props) {
   const proceed = useRanBerri((s) => s.proceedToRating);
   const [referOpen, setReferOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
@@ -30,14 +38,7 @@ export function VerdictPanel({ checks, verdict, readOnly, verdictChanged }: Prop
   ).length;
   const overriddenCount = checks.filter((c) => c.override !== null).length;
 
-  const headline =
-    verdict === 'pass'
-      ? overriddenCount > 0
-        ? `${overriddenCount} OVERRIDDEN · ${passCount} of ${checks.length} pass`
-        : `ALL CHECKS PASSED · ${passCount} of ${checks.length}`
-      : verdict === 'refer'
-        ? `REFER · ${passCount} of ${checks.length} pass`
-        : `DECLINE · ${passCount} of ${checks.length} pass`;
+  const headline = buildHeadline(verdict, passCount, checks.length, overriddenCount);
 
   const headlineColor =
     verdict === 'pass'
@@ -47,7 +48,10 @@ export function VerdictPanel({ checks, verdict, readOnly, verdictChanged }: Prop
         : 'var(--color-danger)';
 
   const primary = PRIMARY_BY_VERDICT[verdict];
-  const proceedDisabled = verdict !== 'pass' || readOnly;
+  // Proceed is disabled when the verdict isn't pass, when the triage
+  // artifact is stale (verdict reflects pre-correction state), or when
+  // the submission is read-only.
+  const proceedDisabled = verdict !== 'pass' || readOnly || isStale;
 
   return (
     <motion.div
@@ -135,4 +139,27 @@ function ActionButton({
       {label}
     </Button>
   );
+}
+
+/**
+ * Headline composition. Override count is surfaced in every verdict
+ * branch (not just pass) so the override is always visible in the
+ * summary line.
+ */
+function buildHeadline(
+  verdict: TriageOutcome,
+  passCount: number,
+  total: number,
+  overriddenCount: number,
+): string {
+  const tag = overriddenCount > 0 ? ` · ${overriddenCount} overridden` : '';
+  if (verdict === 'pass') {
+    return overriddenCount > 0
+      ? `${overriddenCount} OVERRIDDEN · ${passCount} of ${total} pass`
+      : `ALL CHECKS PASSED · ${passCount} of ${total}`;
+  }
+  if (verdict === 'refer') {
+    return `REFER · ${passCount} of ${total} pass${tag}`;
+  }
+  return `DECLINE · ${passCount} of ${total} pass${tag}`;
 }

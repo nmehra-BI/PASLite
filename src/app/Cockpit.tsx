@@ -63,10 +63,12 @@ function CanvasColumn() {
 
 function CanvasSubject() {
   const submission = useRanBerri((s) => s.submission);
+  const submissionState = useRanBerri((s) => s.submissionState);
   const mode = useRanBerri((s) => s.ui.canvasMode);
   const setMode = useRanBerri((s) => s.setCanvasMode);
   const phase = useIntake((s) => s.phase);
   const [rerunning, setRerunning] = useState(false);
+  const isActive = submissionState === 'active';
 
   return (
     <div
@@ -116,7 +118,7 @@ function CanvasSubject() {
         </span>
       </div>
       <div className="flex items-center gap-3">
-        {submission && phase === 'complete' && (
+        {submission && phase === 'complete' && isActive && (
           <button
             type="button"
             onClick={async () => {

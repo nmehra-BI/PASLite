@@ -93,35 +93,49 @@ export function TriageSection() {
         readOnly={readOnly}
       />
 
-      {/* Check rows */}
-      <div style={{ marginTop: 14 }}>
-        {CHECK_ORDER.map((id) => {
-          const record = triage.checks.find((c) => c.id === id);
-          return (
-            <CheckRow
-              key={id}
-              checkId={id}
-              record={record}
-              readOnly={readOnly}
-            />
-          );
-        })}
-      </div>
+      {/* Stale overlay: while staleSince is set, the rendered checks +
+          verdict reflect pre-correction state. Desaturate them and
+          block interaction so the user is forced through `rerun
+          triage`. The header (with the rerun affordance) sits outside
+          this container. */}
+      <div
+        style={{
+          opacity: isStale ? 0.55 : 1,
+          pointerEvents: isStale ? 'none' : 'auto',
+          transition: 'opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
+        aria-disabled={isStale || undefined}
+      >
+        <div style={{ marginTop: 14 }}>
+          {CHECK_ORDER.map((id) => {
+            const record = triage.checks.find((c) => c.id === id);
+            return (
+              <CheckRow
+                key={id}
+                checkId={id}
+                record={record}
+                readOnly={readOnly || isStale}
+              />
+            );
+          })}
+        </div>
 
-      <AnimatePresence>
-        {isSettled && triage.verdict && (
-          <VerdictPanel
-            checks={triage.checks}
-            verdict={
-              // Recompute using overrides — replay's verdict is the snapshot
-              // at triage.completed; overrides since then should win.
-              effectiveVerdict(triage.checks) ?? triage.verdict
-            }
-            readOnly={readOnly}
-            verdictChanged={triage.lastVerdictChange}
-          />
-        )}
-      </AnimatePresence>
+        <AnimatePresence>
+          {isSettled && triage.verdict && (
+            <VerdictPanel
+              checks={triage.checks}
+              verdict={
+                // Recompute using overrides — replay's verdict is the snapshot
+                // at triage.completed; overrides since then should win.
+                effectiveVerdict(triage.checks) ?? triage.verdict
+              }
+              readOnly={readOnly}
+              isStale={isStale}
+              verdictChanged={triage.lastVerdictChange}
+            />
+          )}
+        </AnimatePresence>
+      </div>
     </section>
   );
 }
