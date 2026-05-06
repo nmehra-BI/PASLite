@@ -85,7 +85,80 @@ export type AuditEvent = AuditEventBase &
         fieldPath: string;
         description: string;
       }
-    | { kind: 'enrichment.completed'; submissionId: string; sources: string[] }
+
+    // Enrichment phase (module 3)
+    | { kind: 'enrichment.started'; submissionId: string }
+    | {
+        kind: 'enrichment.sourceQueried';
+        submissionId: string;
+        source: string;
+        queryRef: string;
+      }
+    | {
+        kind: 'enrichment.sourceReturned';
+        submissionId: string;
+        source: string;
+        queryRef: string;
+        latencyMs: number;
+        payload: unknown;
+        summary: string;
+        verdict: 'confirmed' | 'conflict' | 'no-prior';
+      }
+    | {
+        kind: 'enrichment.completed';
+        submissionId: string;
+        sources: string[];
+        conflictCount: number;
+        gapCount: number;
+      }
+    | { kind: 'enrichment.rerun'; submissionId: string; preservedResolutions: number }
+    | {
+        kind: 'conflict.detected';
+        submissionId: string;
+        conflictId: string;
+        fieldPath: string;
+        brokerValue: unknown;
+        brokerSourceRef: string;
+        externalSource: string;
+        externalValue: unknown;
+        externalSourceRef: string;
+        marginalia: string;
+      }
+    | {
+        kind: 'conflict.resolved';
+        submissionId: string;
+        conflictId: string;
+        fieldPath: string;
+        choice: 'broker' | 'external' | 'custom';
+        value: unknown;
+        reason: string;
+        resolvedBy: string;
+      }
+    | {
+        kind: 'gap.detected';
+        submissionId: string;
+        gapId: string;
+        fieldPath: string;
+        description: string;
+      }
+    | {
+        kind: 'gap.resolved';
+        submissionId: string;
+        gapId: string;
+        fieldPath: string;
+        choice: 'present' | 'absent' | 'request';
+        value: boolean | null;
+        reason: string;
+        resolvedBy: string;
+      }
+    | {
+        kind: 'gap.requestSent';
+        submissionId: string;
+        gapId: string;
+        fieldPath: string;
+        recipient: string;
+      }
+
     | { kind: 'conflict.flagged'; submissionId: string; fieldPath: string }
     | {
         kind: 'field.corrected';

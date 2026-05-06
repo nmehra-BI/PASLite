@@ -20,6 +20,16 @@ export type IntakePhase =
   | 'extracting'
   | 'complete';
 
+/**
+ * The inspector can target three things: a Field<T> on the submission
+ * tree, an enrichment source (raw payload), or a detected/resolved
+ * conflict. At most one is active at a time.
+ */
+export type InspectorTarget =
+  | { kind: 'field'; path: string }
+  | { kind: 'source'; sourceId: string }
+  | { kind: 'conflict'; conflictId: string };
+
 export type IntakeUI = {
   phase: IntakePhase;
   /** Page currently visible in the slip preview (1..4). */
@@ -30,9 +40,9 @@ export type IntakeUI = {
   revealedFields: Set<string>;
   /** Field paths that should pulse warn (the gap). */
   pulsingFields: Set<string>;
-  /** Inspector state — the path of the field currently being inspected. */
-  inspectorFieldPath: string | null;
-  /** Last extraction completion timestamp, used by re-extraction reset. */
+  /** Inspector target — at most one active. */
+  inspectorTarget: InspectorTarget | null;
+  /** Last extraction completion timestamp. */
   completedAt: string | null;
   /** Avg confidence reported by the extractor at completion. */
   avgConfidence: number | null;
@@ -46,6 +56,8 @@ export type IntakeUI = {
   revealField: (path: string, opts?: { pulse?: boolean }) => void;
   clearPulse: (path: string) => void;
   openInspector: (path: string) => void;
+  openSourceInspector: (sourceId: string) => void;
+  openConflictInspector: (conflictId: string) => void;
   closeInspector: () => void;
   finalize: (opts: { avgConfidence: number; fieldCount: number; at: string }) => void;
   resetForRerun: () => void;
@@ -58,7 +70,7 @@ export const useIntake = create<IntakeUI>()(
     highlightedSourceRef: null,
     revealedFields: new Set(),
     pulsingFields: new Set(),
-    inspectorFieldPath: null,
+    inspectorTarget: null,
     completedAt: null,
     avgConfidence: null,
     fieldCount: null,
@@ -91,12 +103,22 @@ export const useIntake = create<IntakeUI>()(
 
     openInspector: (path) =>
       set((s) => {
-        s.inspectorFieldPath = path;
+        s.inspectorTarget = { kind: 'field', path };
+      }),
+
+    openSourceInspector: (sourceId) =>
+      set((s) => {
+        s.inspectorTarget = { kind: 'source', sourceId };
+      }),
+
+    openConflictInspector: (conflictId) =>
+      set((s) => {
+        s.inspectorTarget = { kind: 'conflict', conflictId };
       }),
 
     closeInspector: () =>
       set((s) => {
-        s.inspectorFieldPath = null;
+        s.inspectorTarget = null;
       }),
 
     finalize: ({ avgConfidence, fieldCount, at }) =>

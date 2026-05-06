@@ -10,9 +10,18 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'extraction.fieldExtracted': 'Field extracted',
   'extraction.completed': 'Extraction completed',
   'extraction.rerun': 'Extraction rerun',
+  'enrichment.started': 'Enrichment started',
+  'enrichment.sourceQueried': 'Source queried',
+  'enrichment.sourceReturned': 'Source returned',
   'enrichment.completed': 'Enrichment completed',
+  'enrichment.rerun': 'Enrichment rerun',
+  'conflict.detected': 'Conflict raised',
+  'conflict.resolved': 'Conflict resolved',
   'conflict.flagged': 'Conflict flagged',
   'gap.flagged': 'Gap flagged',
+  'gap.detected': 'Gap surfaced',
+  'gap.resolved': 'Gap resolved',
+  'gap.requestSent': 'Broker request queued',
   'field.corrected': 'Field corrected',
   'rating.computed': 'Rating computed',
   'quote.issued': 'Quote issued',
@@ -45,11 +54,23 @@ function formatTime(iso: string): string {
 }
 
 function dotTone(kind: AuditEvent['kind']): string {
-  if (kind === 'gap.flagged' || kind === 'conflict.flagged' || kind === 'artifact.stale')
+  if (
+    kind === 'gap.flagged' ||
+    kind === 'gap.detected' ||
+    kind === 'conflict.flagged' ||
+    kind === 'conflict.detected' ||
+    kind === 'artifact.stale'
+  )
     return 'var(--color-warn)';
-  if (kind === 'field.corrected') return 'var(--color-accent)';
+  if (
+    kind === 'field.corrected' ||
+    kind === 'conflict.resolved' ||
+    kind === 'gap.resolved'
+  )
+    return 'var(--color-accent)';
   if (
     kind === 'extraction.completed' ||
+    kind === 'enrichment.completed' ||
     kind === 'rating.computed' ||
     kind === 'quote.issued' ||
     kind === 'artifact.computed'
@@ -72,13 +93,15 @@ type EventEntry = {
 };
 
 function aggregate(log: AuditEvent[]): EventEntry[] {
-  // Hide replay-only / per-field-noise events. extraction.fieldExtracted
-  // is already summarised by extraction.completed; submission.created is
-  // a snapshot whose user-facing analogue is email.received.
+  // Hide noise-y replay-only events. The cinematic emits one query+return
+  // per source, but the user-facing rail summarises the whole pass via
+  // enrichment.completed.
   const filtered = log.filter(
     (e) =>
       e.kind !== 'extraction.fieldExtracted' &&
-      e.kind !== 'submission.created',
+      e.kind !== 'submission.created' &&
+      e.kind !== 'enrichment.sourceQueried' &&
+      e.kind !== 'enrichment.sourceReturned',
   );
   return filtered.map((event) => {
     if (event.kind === 'extraction.completed') {
@@ -88,8 +111,46 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
         subtitle: `${event.fieldCount} fields · avg conf ${(event.avgConfidence * 100).toFixed(0)}%`,
       };
     }
-    if (event.kind === 'gap.flagged') {
+    if (event.kind === 'enrichment.completed') {
+      const conflicts = event.conflictCount;
+      const gaps = event.gapCount;
+      const confirmed = event.sources.length - conflicts;
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.sources.length} sources · ${conflicts} conflict${conflicts === 1 ? '' : 's'} · ${gaps} gap${gaps === 1 ? '' : 's'} · ${confirmed} confirmed`,
+      };
+    }
+    if (event.kind === 'gap.flagged' || event.kind === 'gap.detected') {
       return { kind: 'event', event, subtitle: event.description };
+    }
+    if (event.kind === 'gap.resolved') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.fieldPath} · ${event.choice}`,
+      };
+    }
+    if (event.kind === 'gap.requestSent') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `to ${event.recipient}`,
+      };
+    }
+    if (event.kind === 'conflict.detected') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.fieldPath} · ${event.externalSource}`,
+      };
+    }
+    if (event.kind === 'conflict.resolved') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.fieldPath} · ${event.choice}`,
+      };
     }
     if (event.kind === 'field.corrected') {
       const subtitle = event.note
@@ -108,6 +169,13 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
         kind: 'event',
         event,
         subtitle: `${event.preservedCorrections} corrections preserved`,
+      };
+    }
+    if (event.kind === 'enrichment.rerun') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.preservedResolutions} resolutions preserved`,
       };
     }
     return { kind: 'event', event };

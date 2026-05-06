@@ -23,7 +23,9 @@ const formatDate = (iso: string) => DATE_FMT.format(new Date(iso));
  * has settled. NOT a generic table &mdash; this is the AI's voice
  * presenting its work.
  */
-export function ExtractedView() {
+type Props = { children?: React.ReactNode };
+
+export function ExtractedView({ children }: Props = {}) {
   const submission = useRanBerri((s) => s.submission);
   const phase = useIntake((s) => s.phase);
   const avgConfidence = useIntake((s) => s.avgConfidence);
@@ -159,6 +161,8 @@ export function ExtractedView() {
           treated as the broker&rsquo;s voice; not a fact.
         </p>
       </Group>
+
+      {children}
     </div>
   );
 }

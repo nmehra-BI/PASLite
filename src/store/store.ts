@@ -15,8 +15,11 @@ import { getAtPath, setAtPath, type FieldPath } from '@/lib/paths';
 import {
   applyExtraction,
   freshArtifacts,
+  freshEnrichment,
   replay,
   type ArtifactState,
+  type EnrichmentReplayState,
+  type SourceStatus,
 } from './replay';
 
 /**
@@ -50,6 +53,7 @@ export type RanBerriState = {
   submission: Submission | null;
   auditLog: AuditEvent[];
   artifacts: Record<ArtifactKey, ArtifactState>;
+  enrichment: EnrichmentReplayState;
   lifecycle: {
     cursor: LifecycleMilestone;
     now: LifecycleMilestone;
@@ -88,6 +92,38 @@ export type RanBerriState = {
 
   markArtifactComputed: (key: ArtifactKey, at?: string) => void;
   markArtifactStale: (key: ArtifactKey) => void;
+
+  /**
+   * Resolve a detected cross-source conflict. Writes a
+   * `conflict.resolved` event (intent / provenance) AND a
+   * `field.corrected` event (the actual mutation, plus its dep-graph
+   * stale propagation).
+   */
+  resolveConflict: (input: {
+    conflictId: string;
+    fieldPath: string;
+    choice: 'broker' | 'external' | 'custom';
+    value: unknown;
+    reason: string;
+    resolvedBy: string;
+  }) => void;
+
+  /**
+   * Resolve a gap. For `present`/`absent`, writes a `gap.resolved`
+   * event AND a `field.corrected` event with the chosen boolean. For
+   * `request`, writes `gap.resolved` + `gap.requestSent` (no field
+   * correction; the submission stays in pending-information state).
+   */
+  resolveGap: (input: {
+    gapId: string;
+    fieldPath: string;
+    choice: 'present' | 'absent' | 'request';
+    reason: string;
+    resolvedBy: string;
+    /** Required when choice === 'request'. */
+    recipient?: string;
+  }) => void;
+
   scrubLifecycle: (milestone: LifecycleMilestone) => void;
   setCanvasMode: (mode: 'closed' | 'compact' | 'expanded') => void;
   reset: () => void;
@@ -135,6 +171,7 @@ export const useRanBerri = create<RanBerriState>()(
       submission: null,
       auditLog: [],
       artifacts: freshArtifacts(),
+      enrichment: freshEnrichment(),
       lifecycle: { cursor: 'quote', now: 'quote' },
       ui: { canvasMode: 'compact' },
 
@@ -237,6 +274,94 @@ export const useRanBerri = create<RanBerriState>()(
         });
       },
 
+      resolveConflict: (input) => {
+        const submission = get().submission;
+        if (!submission) {
+          throw new Error('resolveConflict: no active submission');
+        }
+        const at = new Date().toISOString();
+        const submissionId = submission.id;
+
+        // 1. The conflict.resolved event records the intent/provenance.
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: input.resolvedBy },
+          at,
+          kind: 'conflict.resolved',
+          submissionId,
+          conflictId: input.conflictId,
+          fieldPath: input.fieldPath,
+          choice: input.choice,
+          value: input.value,
+          reason: input.reason,
+          resolvedBy: input.resolvedBy,
+        });
+
+        // 2. The field.corrected event is the actual mutation plus
+        // dep-graph stale propagation. We invoke applyCorrection so
+        // the same closure logic + audit cascade fires.
+        get().applyCorrection(input.fieldPath, {
+          value: input.value,
+          reason: `[conflict ${input.conflictId}] ${input.reason}`,
+          correctedBy: input.resolvedBy,
+          correctedAt: at,
+        });
+      },
+
+      resolveGap: (input) => {
+        const submission = get().submission;
+        if (!submission) {
+          throw new Error('resolveGap: no active submission');
+        }
+        const at = new Date().toISOString();
+        const submissionId = submission.id;
+
+        const value: boolean | null =
+          input.choice === 'present'
+            ? true
+            : input.choice === 'absent'
+              ? false
+              : null;
+
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: input.resolvedBy },
+          at,
+          kind: 'gap.resolved',
+          submissionId,
+          gapId: input.gapId,
+          fieldPath: input.fieldPath,
+          choice: input.choice,
+          value,
+          reason: input.reason,
+          resolvedBy: input.resolvedBy,
+        });
+
+        if (input.choice === 'request') {
+          if (!input.recipient) {
+            throw new Error('resolveGap: recipient required for request');
+          }
+          get().appendAuditEvent({
+            actor: { kind: 'system' },
+            at,
+            kind: 'gap.requestSent',
+            submissionId,
+            gapId: input.gapId,
+            fieldPath: input.fieldPath,
+            recipient: input.recipient,
+          });
+          // No field.corrected — submission stays in pending state.
+          return;
+        }
+
+        // present / absent: write the boolean as an underwriter
+        // correction and let the dep-graph cascade fire.
+        get().applyCorrection(input.fieldPath, {
+          value,
+          reason: `[gap ${input.gapId}] ${input.reason}`,
+          correctedBy: input.resolvedBy,
+          correctedAt: at,
+        });
+      },
+
       scrubLifecycle: (milestone) =>
         set((s) => {
           s.lifecycle.cursor = milestone;
@@ -252,6 +377,7 @@ export const useRanBerri = create<RanBerriState>()(
           s.submission = null;
           s.auditLog = [];
           s.artifacts = freshArtifacts();
+          s.enrichment = freshEnrichment();
           s.lifecycle = { cursor: 'quote', now: 'quote' };
           s.ui = { canvasMode: 'compact' };
         }),
@@ -270,9 +396,10 @@ export const useRanBerri = create<RanBerriState>()(
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Partial<RanBerriState>) };
         if (merged.auditLog && merged.auditLog.length > 0) {
-          const { submission, artifacts } = replay(merged.auditLog);
+          const { submission, artifacts, enrichment } = replay(merged.auditLog);
           merged.submission = submission;
           merged.artifacts = artifacts;
+          merged.enrichment = enrichment;
         }
         return merged;
       },
@@ -315,6 +442,127 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
             correctedAt: e.at,
           },
         });
+      }
+      break;
+    }
+
+    case 'enrichment.started':
+      s.enrichment.phase = 'querying';
+      break;
+
+    case 'enrichment.sourceQueried':
+      s.enrichment.sources[e.source] = {
+        id: e.source,
+        name: e.source,
+        status: 'querying',
+        result: null,
+        latencyMs: null,
+        queriedAt: e.at,
+        returnedAt: null,
+      } as SourceStatus;
+      break;
+
+    case 'enrichment.sourceReturned': {
+      const prev = s.enrichment.sources[e.source];
+      s.enrichment.sources[e.source] = {
+        id: e.source,
+        name: e.source,
+        status: 'returned',
+        result: e.payload as SourceStatus['result'],
+        latencyMs: e.latencyMs,
+        queriedAt: prev?.queriedAt ?? null,
+        returnedAt: e.at,
+      };
+      break;
+    }
+
+    case 'enrichment.completed':
+      s.enrichment.phase = 'settled';
+      s.enrichment.completedAt = e.at;
+      s.enrichment.conflictCountAtSettle = e.conflictCount;
+      s.enrichment.gapCountAtSettle = e.gapCount;
+      break;
+
+    case 'enrichment.rerun':
+      s.enrichment.phase = 'idle';
+      s.enrichment.sources = {};
+      // conflicts/gaps preserved across rerun until subsequent
+      // detection events overwrite them.
+      break;
+
+    case 'conflict.detected': {
+      const idx = s.enrichment.conflicts.findIndex(
+        (c) => c.id === e.conflictId,
+      );
+      const next = {
+        id: e.conflictId,
+        fieldPath: e.fieldPath,
+        brokerValue: e.brokerValue,
+        brokerSourceRef: e.brokerSourceRef,
+        externalSource: e.externalSource,
+        externalValue: e.externalValue,
+        externalSourceRef: e.externalSourceRef,
+        marginalia: e.marginalia,
+        detectedAt: e.at,
+        resolution: idx >= 0 ? s.enrichment.conflicts[idx]!.resolution : null,
+      };
+      if (idx >= 0) s.enrichment.conflicts[idx] = next;
+      else s.enrichment.conflicts.push(next);
+      break;
+    }
+
+    case 'conflict.resolved': {
+      const idx = s.enrichment.conflicts.findIndex(
+        (c) => c.id === e.conflictId,
+      );
+      if (idx >= 0) {
+        s.enrichment.conflicts[idx]!.resolution = {
+          choice: e.choice,
+          value: e.value,
+          reason: e.reason,
+          resolvedBy: e.resolvedBy,
+          resolvedAt: e.at,
+        };
+      }
+      break;
+    }
+
+    case 'gap.detected': {
+      const idx = s.enrichment.gaps.findIndex((g) => g.id === e.gapId);
+      const next = {
+        id: e.gapId,
+        fieldPath: e.fieldPath,
+        description: e.description,
+        detectedAt: e.at,
+        resolution: idx >= 0 ? s.enrichment.gaps[idx]!.resolution : null,
+        requestSent: idx >= 0 ? s.enrichment.gaps[idx]!.requestSent : null,
+      };
+      if (idx >= 0) s.enrichment.gaps[idx] = next;
+      else s.enrichment.gaps.push(next);
+      break;
+    }
+
+    case 'gap.resolved': {
+      const idx = s.enrichment.gaps.findIndex((g) => g.id === e.gapId);
+      if (idx >= 0) {
+        s.enrichment.gaps[idx]!.resolution = {
+          choice: e.choice,
+          value: e.value,
+          reason: e.reason,
+          resolvedBy: e.resolvedBy,
+          resolvedAt: e.at,
+        };
+      }
+      break;
+    }
+
+    case 'gap.requestSent': {
+      const idx = s.enrichment.gaps.findIndex((g) => g.id === e.gapId);
+      if (idx >= 0) {
+        s.enrichment.gaps[idx]!.requestSent = {
+          recipient: e.recipient,
+          queuedAt: e.at,
+        };
       }
       break;
     }

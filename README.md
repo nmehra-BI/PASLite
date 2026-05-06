@@ -98,6 +98,36 @@ the human disagreed.
   followed by pending-artifact rows for the stages module 3-5 will
   populate.
 
+### Module 3 — enrichment + conflict resolution
+
+- **Four mock external sources** (`src/lib/fixtures/enrichmentSources.ts`)
+  with realistic latencies: Internal Loss Index (200ms), Experian
+  Sanctions (400ms), Companies House (800ms), EA Permit Registry
+  (1100ms).
+- **Auto-fire**: enrichment runs immediately after extraction settles,
+  and again after every subsequent `extraction.completed` (so a rerun
+  of extraction cascades to a rerun of enrichment).
+- **Cross-source conflict detection** (`src/lib/conflict/`): the
+  Companies House FY23 figure (£7.91M) vs the broker's FY24 number
+  (£8.42M) surfaces as a `conflict.detected` event. Self-conflicts
+  and temporal conflicts are out of scope &mdash; collapsing all
+  three into one UI loses the cognitive win.
+- **Conflict-resolution UI**: 3-column &ldquo;two voices&rdquo; card.
+  Broker column in italic serif (the human, narrative voice). External
+  column in monospace tabular numeric (the regulator's voice).
+  Underwriter's call on the right with three radios + required
+  reason. The typographic contrast IS the design.
+- **Gap-resolution UI**: simpler card for missing-but-required fields
+  (the fire-suppression case). Three choices: present, absent, or
+  request from broker (queues a mock email task).
+- **Confirmed sources panel**: positive verifications (EA permits,
+  sanctions, loss history, directors) render as a quiet hairline
+  list. The system silently doing positive verification matters as
+  much as the conflicts.
+- **Inspector** now handles three target kinds: field (full Field<T>
+  detail), source (raw payload + latency + refreshed-at), or conflict
+  (detection metadata + resolution history).
+
 ## What&rsquo;s planned
 
 - **Module 2** &mdash; submission intake &amp; field extraction

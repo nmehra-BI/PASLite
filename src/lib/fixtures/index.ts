@@ -27,3 +27,24 @@ export type {
   SlipLine,
   SlipPage,
 } from './greenline';
+
+export {
+  ENRICHMENT_SOURCES,
+  SOURCE_QUERIES,
+  queryCompaniesHouse,
+  queryEAPermitRegistry,
+  queryExperianSanctions,
+  queryInternalLossIndex,
+} from './enrichmentSources';
+
+export type {
+  CompaniesHousePayload,
+  EAPermitPayload,
+  EnrichmentSourceId,
+  LossIndexPayload,
+  SanctionsPayload,
+  SourceMeta,
+  SourcePayload,
+  SourceResult,
+  SourceVerdict,
+} from './enrichmentSources';

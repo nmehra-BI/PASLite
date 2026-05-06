@@ -1,5 +1,6 @@
 import type { AuditEvent } from '@/lib/audit';
 import type { Submission } from '@/lib/fixtures/types';
+import type { SourceResult } from '@/lib/fixtures';
 import type { Field, SystemExtracted } from '@/lib/field';
 import { extractField } from '@/lib/field';
 import { isField, type ArtifactKey } from '@/lib/deps';
@@ -12,10 +13,9 @@ import { getAtPath, setAtPath } from '@/lib/paths';
  * in the store is derived. Replay is pure and deterministic: same log
  * in &rarr; same state out.
  *
- * Snapshot events (`submission.created`) reset state. Delta events
- * (`extraction.fieldExtracted`, `field.corrected`, `artifact.computed`,
- * `artifact.stale`) update specific paths. Other events update intake
- * metadata.
+ * Module 3 adds enrichment + conflict + gap state. Source results,
+ * conflict resolutions, and gap resolutions are all reconstructed
+ * from their respective events.
  */
 
 export type ArtifactState = {
@@ -31,10 +31,75 @@ export type IntakeReplayState = {
   completedAt: string | null;
 };
 
+// ---------- enrichment-derived state ----------
+
+export type SourceStatus = {
+  id: string;
+  name: string;
+  status: 'idle' | 'querying' | 'returned';
+  result: SourceResult | null;
+  /** Wall-clock ms latency captured from the sourceReturned event. */
+  latencyMs: number | null;
+  queriedAt: string | null;
+  returnedAt: string | null;
+};
+
+export type ConflictRecord = {
+  id: string;
+  fieldPath: string;
+  brokerValue: unknown;
+  brokerSourceRef: string;
+  externalSource: string;
+  externalValue: unknown;
+  externalSourceRef: string;
+  marginalia: string;
+  detectedAt: string;
+  resolution: ConflictResolution | null;
+};
+
+export type ConflictResolution = {
+  choice: 'broker' | 'external' | 'custom';
+  value: unknown;
+  reason: string;
+  resolvedBy: string;
+  resolvedAt: string;
+};
+
+export type GapRecord = {
+  id: string;
+  fieldPath: string;
+  description: string;
+  detectedAt: string;
+  resolution: GapResolution | null;
+  /** A 'request' resolution adds a gap.requestSent event with this. */
+  requestSent: { recipient: string; queuedAt: string } | null;
+};
+
+export type GapResolution = {
+  choice: 'present' | 'absent' | 'request';
+  value: boolean | null;
+  reason: string;
+  resolvedBy: string;
+  resolvedAt: string;
+};
+
+export type EnrichmentReplayState = {
+  phase: 'idle' | 'querying' | 'reconciling' | 'settled';
+  sources: Record<string, SourceStatus>;
+  conflicts: ConflictRecord[];
+  gaps: GapRecord[];
+  /** Wall-clock when enrichment.completed last fired. */
+  completedAt: string | null;
+  /** Conflict count at last completion (for the byline). */
+  conflictCountAtSettle: number;
+  gapCountAtSettle: number;
+};
+
 export type ReplayResult = {
   submission: Submission | null;
   artifacts: Record<ArtifactKey, ArtifactState>;
   intake: IntakeReplayState;
+  enrichment: EnrichmentReplayState;
 };
 
 export function freshArtifacts(): Record<ArtifactKey, ArtifactState> {
@@ -64,10 +129,23 @@ function freshIntake(): IntakeReplayState {
   };
 }
 
+export function freshEnrichment(): EnrichmentReplayState {
+  return {
+    phase: 'idle',
+    sources: {},
+    conflicts: [],
+    gaps: [],
+    completedAt: null,
+    conflictCountAtSettle: 0,
+    gapCountAtSettle: 0,
+  };
+}
+
 export function replay(events: AuditEvent[]): ReplayResult {
   let submission: Submission | null = null;
   const artifacts = freshArtifacts();
   const intake = freshIntake();
+  const enrichment = freshEnrichment();
 
   for (const e of events) {
     switch (e.kind) {
@@ -76,8 +154,6 @@ export function replay(events: AuditEvent[]): ReplayResult {
         break;
 
       case 'submission.created':
-        // Snapshot. Deep-clone so subsequent mutations don't reach back into
-        // the event payload.
         submission = structuredClone(e.submission);
         if (intake.phase === 'idle') intake.phase = 'receiving';
         break;
@@ -125,6 +201,144 @@ export function replay(events: AuditEvent[]): ReplayResult {
         }
         break;
 
+      // ---------- enrichment ----------
+
+      case 'enrichment.started':
+        enrichment.phase = 'querying';
+        break;
+
+      case 'enrichment.sourceQueried':
+        enrichment.sources[e.source] = {
+          id: e.source,
+          name: e.source,
+          status: 'querying',
+          result: null,
+          latencyMs: null,
+          queriedAt: e.at,
+          returnedAt: null,
+        };
+        break;
+
+      case 'enrichment.sourceReturned':
+        enrichment.sources[e.source] = {
+          id: e.source,
+          name: e.source,
+          status: 'returned',
+          result: e.payload as SourceResult,
+          latencyMs: e.latencyMs,
+          queriedAt: enrichment.sources[e.source]?.queriedAt ?? null,
+          returnedAt: e.at,
+        };
+        break;
+
+      case 'enrichment.completed':
+        enrichment.phase = 'settled';
+        enrichment.completedAt = e.at;
+        enrichment.conflictCountAtSettle = e.conflictCount;
+        enrichment.gapCountAtSettle = e.gapCount;
+        break;
+
+      case 'enrichment.rerun':
+        // Reset enrichment-derived state. Subsequent enrichment.started
+        // and source events re-establish it. Conflicts and gaps already
+        // resolved are preserved and re-attached when subsequent
+        // detection events fire.
+        enrichment.phase = 'idle';
+        enrichment.sources = {};
+        // conflicts / gaps stay — preserved resolutions need to live
+        // through the rerun until subsequent conflict.detected /
+        // gap.detected events overwrite them.
+        break;
+
+      case 'conflict.detected': {
+        const existing = enrichment.conflicts.find((c) => c.id === e.conflictId);
+        const next: ConflictRecord = {
+          id: e.conflictId,
+          fieldPath: e.fieldPath,
+          brokerValue: e.brokerValue,
+          brokerSourceRef: e.brokerSourceRef,
+          externalSource: e.externalSource,
+          externalValue: e.externalValue,
+          externalSourceRef: e.externalSourceRef,
+          marginalia: e.marginalia,
+          detectedAt: e.at,
+          resolution: existing?.resolution ?? null,
+        };
+        if (existing) {
+          enrichment.conflicts = enrichment.conflicts.map((c) =>
+            c.id === e.conflictId ? next : c,
+          );
+        } else {
+          enrichment.conflicts.push(next);
+        }
+        break;
+      }
+
+      case 'conflict.resolved': {
+        const idx = enrichment.conflicts.findIndex((c) => c.id === e.conflictId);
+        if (idx >= 0) {
+          enrichment.conflicts[idx] = {
+            ...enrichment.conflicts[idx]!,
+            resolution: {
+              choice: e.choice,
+              value: e.value,
+              reason: e.reason,
+              resolvedBy: e.resolvedBy,
+              resolvedAt: e.at,
+            },
+          };
+        }
+        break;
+      }
+
+      case 'gap.detected': {
+        const existing = enrichment.gaps.find((g) => g.id === e.gapId);
+        const next: GapRecord = {
+          id: e.gapId,
+          fieldPath: e.fieldPath,
+          description: e.description,
+          detectedAt: e.at,
+          resolution: existing?.resolution ?? null,
+          requestSent: existing?.requestSent ?? null,
+        };
+        if (existing) {
+          enrichment.gaps = enrichment.gaps.map((g) =>
+            g.id === e.gapId ? next : g,
+          );
+        } else {
+          enrichment.gaps.push(next);
+        }
+        break;
+      }
+
+      case 'gap.resolved': {
+        const idx = enrichment.gaps.findIndex((g) => g.id === e.gapId);
+        if (idx >= 0) {
+          enrichment.gaps[idx] = {
+            ...enrichment.gaps[idx]!,
+            resolution: {
+              choice: e.choice,
+              value: e.value,
+              reason: e.reason,
+              resolvedBy: e.resolvedBy,
+              resolvedAt: e.at,
+            },
+          };
+        }
+        break;
+      }
+
+      case 'gap.requestSent': {
+        const idx = enrichment.gaps.findIndex((g) => g.id === e.gapId);
+        if (idx >= 0) {
+          enrichment.gaps[idx] = {
+            ...enrichment.gaps[idx]!,
+            requestSent: { recipient: e.recipient, queuedAt: e.at },
+          };
+        }
+        break;
+      }
+
       case 'artifact.computed':
         if (isArtifactKey(e.artifact)) {
           artifacts[e.artifact].computedAt = e.computedAt;
@@ -139,10 +353,9 @@ export function replay(events: AuditEvent[]): ReplayResult {
         }
         break;
 
-      // Pass-through (no state mutation in module 2 scope):
+      // Pass-through:
       case 'submission.received':
       case 'gap.flagged':
-      case 'enrichment.completed':
       case 'conflict.flagged':
       case 'rating.computed':
       case 'quote.issued':
@@ -152,7 +365,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
     }
   }
 
-  return { submission, artifacts, intake };
+  return { submission, artifacts, intake, enrichment };
 }
 
 function isArtifactKey(s: string): s is ArtifactKey {
@@ -165,10 +378,6 @@ function isArtifactKey(s: string): s is ArtifactKey {
  *   - If the path resolves to a Field<T>, set systemExtracted on it.
  *   - If the path resolves to an aggregate (e.g. `sites`), walk into
  *     the structure and apply each leaf accordingly.
- *
- * The aggregate case is what lets the schedule emit a single event for
- * `sites` whose value is an array of plain Site-shaped records; replay
- * lifts each property into the corresponding Site's child Field<T>.
  *
  * Mutates `submission` in place.
  */
@@ -204,5 +413,4 @@ export function applyExtraction(
     }
     return;
   }
-  // Otherwise: silently skip. The audit event still records the attempt.
 }

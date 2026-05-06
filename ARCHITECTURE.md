@@ -137,6 +137,22 @@ Audit events are **append-only**. Use `appendAuditEvent`; never mutate
 or remove an existing entry. The DecisionTrail shows the trail; the
 reducer derives state.
 
+## Conflict scope
+
+Module 3 models **cross-source conflicts only** (broker disagrees with
+an external source) plus a related class &mdash; **gap detection**
+where the system flags missing-but-required fields. Two other classes
+are deliberately out of scope:
+
+- **Self-conflicts** (broker doc disagrees with itself page-to-page)
+- **Temporal conflicts** (broker data stale; latest filing supersedes)
+
+We chose this scope because collapsing all three into one
+&ldquo;conflicts&rdquo; UI forces the underwriter to mentally
+re-classify each one, which loses the cognitive win. Self- and
+temporal-conflicts will land as separate first-class flows in a later
+module.
+
 ## The dependency graph
 
 `src/lib/deps/graph.ts` declares the DAG:

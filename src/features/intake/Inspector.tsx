@@ -6,41 +6,33 @@ import { ConfidenceDot, SourceRef } from '@/components';
 import { effectiveValue, type Field } from '@/lib/field';
 import { getAtPath } from '@/lib/paths';
 import { isField } from '@/lib/deps';
-import { useIntake } from './intakeStore';
+import { ENRICHMENT_SOURCES } from '@/lib/fixtures';
+import { useIntake, type InspectorTarget } from './intakeStore';
 import { CorrectionInline } from './CorrectionInline';
 
 /**
- * The inspector slides in from the right edge of the canvas body when
- * a field is opened. It shows the full Field<T> detail (broker layer,
- * system layer, optional underwriter layer) plus a "correct this"
- * affordance.
- *
- * Closes on click-outside, ESC, or the X button.
+ * The inspector slides in from the right edge of the canvas body. It
+ * supports three target kinds:
+ *   - field    — full Field<T> detail with "correct this" affordance
+ *   - source   — raw enrichment payload
+ *   - conflict — detection metadata + resolution history
  */
 export function Inspector() {
-  const path = useIntake((s) => s.inspectorFieldPath);
+  const target = useIntake((s) => s.inspectorTarget);
   const close = useIntake((s) => s.closeInspector);
-  const submission = useRanBerri((s) => s.submission);
-  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
-    if (!path) {
-      setEditing(false);
-      return;
-    }
+    if (!target) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [path, close]);
-
-  const field = path && submission ? (getAtPath(submission, path) as unknown) : null;
-  const isAField = isField(field);
+  }, [target, close]);
 
   return (
     <AnimatePresence>
-      {path && isAField && (
+      {target && (
         <>
           <motion.div
             key="scrim"
@@ -77,17 +69,7 @@ export function Inspector() {
               minHeight: 0,
             }}
           >
-            <Header path={path} onClose={close} onEdit={() => setEditing((e) => !e)} editing={editing} />
-            <Body
-              path={path}
-              field={field as Field<unknown>}
-              editing={editing}
-              onSaved={() => {
-                setEditing(false);
-                close();
-              }}
-              onCancel={() => setEditing(false)}
-            />
+            <InspectorBody target={target} onClose={close} />
           </motion.aside>
         </>
       )}
@@ -95,7 +77,63 @@ export function Inspector() {
   );
 }
 
-function Header({
+function InspectorBody({
+  target,
+  onClose,
+}: {
+  target: InspectorTarget;
+  onClose: () => void;
+}) {
+  if (target.kind === 'field') return <FieldInspector path={target.path} onClose={onClose} />;
+  if (target.kind === 'source') return <SourceInspector sourceId={target.sourceId} onClose={onClose} />;
+  return <ConflictInspector conflictId={target.conflictId} onClose={onClose} />;
+}
+
+// ---------- Field inspector ----------
+
+function FieldInspector({ path, onClose }: { path: string; onClose: () => void }) {
+  const submission = useRanBerri((s) => s.submission);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    setEditing(false);
+  }, [path]);
+
+  const field = submission ? (getAtPath(submission, path) as unknown) : null;
+  if (!isField(field)) {
+    return (
+      <>
+        <BareHeader label="inspector" subtitle={path} onClose={onClose} />
+        <div style={{ padding: 18 }}>
+          <em style={{ color: 'var(--color-ink-faint)' }}>not a field</em>
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <FieldHeader
+        path={path}
+        editing={editing}
+        onClose={onClose}
+        onEdit={() => setEditing((e) => !e)}
+      />
+      <FieldBody
+        path={path}
+        field={field as Field<unknown>}
+        editing={editing}
+        onSaved={() => {
+          setEditing(false);
+          onClose();
+        }}
+        onCancel={() => setEditing(false)}
+      />
+    </>
+  );
+}
+
+function FieldHeader({
   path,
   onClose,
   onEdit,
@@ -127,10 +165,7 @@ function Header({
           strokeWidth={1.5}
           style={{ color: 'var(--color-ink-faint)' }}
         />
-        <span
-          className="mono"
-          style={{ fontSize: 11, color: 'var(--color-ink)' }}
-        >
+        <span className="mono" style={{ fontSize: 11, color: 'var(--color-ink)' }}>
           {path}
         </span>
       </div>
@@ -154,10 +189,7 @@ function Header({
           type="button"
           onClick={onClose}
           aria-label="Close inspector"
-          style={{
-            padding: 4,
-            color: 'var(--color-ink-mute)',
-          }}
+          style={{ padding: 4, color: 'var(--color-ink-mute)' }}
         >
           <X size={14} strokeWidth={1.5} />
         </button>
@@ -166,7 +198,7 @@ function Header({
   );
 }
 
-function Body({
+function FieldBody({
   path,
   field,
   editing,
@@ -276,6 +308,263 @@ function Body({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------- Source inspector ----------
+
+function SourceInspector({
+  sourceId,
+  onClose,
+}: {
+  sourceId: string;
+  onClose: () => void;
+}) {
+  const source = useRanBerri((s) => s.enrichment.sources[sourceId]);
+  const meta = ENRICHMENT_SOURCES.find((m) => m.id === sourceId);
+
+  return (
+    <>
+      <BareHeader
+        label="source"
+        subtitle={meta?.name ?? sourceId}
+        onClose={onClose}
+      />
+      <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
+        <div
+          className="serif"
+          style={{
+            fontSize: 18,
+            fontWeight: 500,
+            letterSpacing: '-0.01em',
+            color: 'var(--color-ink)',
+          }}
+        >
+          {meta?.name ?? sourceId}
+        </div>
+        <div
+          className="serif"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 12.5,
+            color: 'var(--color-ink-mute)',
+            marginTop: 4,
+          }}
+        >
+          {source?.result?.summary ?? '—'}
+        </div>
+
+        <Layer label="latency" tone="quiet">
+          <span className="mono" style={{ fontSize: 11.5, color: 'var(--color-ink-soft)' }}>
+            {source?.latencyMs != null ? `${source.latencyMs} ms` : '—'}
+          </span>
+        </Layer>
+
+        <Layer label="refreshed at" tone="quiet">
+          <span className="mono" style={{ fontSize: 11.5, color: 'var(--color-ink-soft)' }}>
+            {source?.returnedAt
+              ? new Date(source.returnedAt).toLocaleString('en-GB')
+              : '—'}
+          </span>
+        </Layer>
+
+        <Layer label="raw payload">
+          <pre
+            className="mono"
+            style={{
+              fontSize: 10.5,
+              lineHeight: 1.55,
+              color: 'var(--color-ink-soft)',
+              background: 'var(--color-bg)',
+              padding: 10,
+              borderRadius: 'var(--radius-button)',
+              overflow: 'auto',
+              margin: 0,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            {JSON.stringify(source?.result?.payload ?? null, null, 2)}
+          </pre>
+        </Layer>
+      </div>
+    </>
+  );
+}
+
+// ---------- Conflict inspector ----------
+
+function ConflictInspector({
+  conflictId,
+  onClose,
+}: {
+  conflictId: string;
+  onClose: () => void;
+}) {
+  const conflict = useRanBerri((s) =>
+    s.enrichment.conflicts.find((c) => c.id === conflictId),
+  );
+
+  return (
+    <>
+      <BareHeader
+        label="conflict"
+        subtitle={conflictId}
+        onClose={onClose}
+      />
+      <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>
+        {conflict ? (
+          <>
+            <div className="eyebrow">field</div>
+            <div
+              className="mono"
+              style={{ fontSize: 12, color: 'var(--color-ink)', marginTop: 2 }}
+            >
+              {conflict.fieldPath}
+            </div>
+
+            <Layer label="broker said">
+              <span
+                className="serif"
+                style={{ fontStyle: 'italic', fontSize: 14, color: 'var(--color-ink)' }}
+              >
+                {formatPretty(conflict.brokerValue)}
+              </span>
+              <div
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: 'var(--color-ink-faint)',
+                  letterSpacing: '0.04em',
+                  marginTop: 2,
+                }}
+              >
+                {conflict.brokerSourceRef}
+              </div>
+            </Layer>
+
+            <Layer label={conflict.externalSource}>
+              <span
+                className="mono"
+                style={{ fontSize: 14, color: 'var(--color-ink)' }}
+              >
+                {formatPretty(conflict.externalValue)}
+              </span>
+              <div
+                className="mono"
+                style={{
+                  fontSize: 10,
+                  color: 'var(--color-ink-faint)',
+                  letterSpacing: '0.04em',
+                  marginTop: 2,
+                }}
+              >
+                {conflict.externalSourceRef}
+              </div>
+            </Layer>
+
+            <Layer label="marginalia" tone="quiet">
+              <span
+                className="serif"
+                style={{
+                  fontStyle: 'italic',
+                  fontSize: 12.5,
+                  color: 'var(--color-ink-mute)',
+                  lineHeight: 1.5,
+                }}
+              >
+                {conflict.marginalia}
+              </span>
+            </Layer>
+
+            {conflict.resolution ? (
+              <Layer label="resolved" tone="accent">
+                <div style={{ fontSize: 13, color: 'var(--color-ink)' }}>
+                  {conflict.resolution.choice} → {formatPretty(conflict.resolution.value)}
+                </div>
+                <div
+                  className="serif"
+                  style={{
+                    fontStyle: 'italic',
+                    fontSize: 12,
+                    color: 'var(--color-ink-mute)',
+                    marginTop: 4,
+                  }}
+                >
+                  &ldquo;{conflict.resolution.reason}&rdquo;
+                </div>
+                <div
+                  className="mono"
+                  style={{
+                    fontSize: 10,
+                    color: 'var(--color-ink-faint)',
+                    letterSpacing: '0.04em',
+                    marginTop: 4,
+                  }}
+                >
+                  {conflict.resolution.resolvedBy} ·{' '}
+                  {new Date(conflict.resolution.resolvedAt).toLocaleString('en-GB')}
+                </div>
+              </Layer>
+            ) : (
+              <Layer label="status" tone="quiet">
+                <em style={{ color: 'var(--color-ink-faint)' }}>unresolved</em>
+              </Layer>
+            )}
+          </>
+        ) : (
+          <em style={{ color: 'var(--color-ink-faint)' }}>conflict not found</em>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ---------- shared ----------
+
+function BareHeader({
+  label,
+  subtitle,
+  onClose,
+}: {
+  label: string;
+  subtitle: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="hairline-b flex items-center justify-between"
+      style={{ padding: '12px 18px', flex: '0 0 auto' }}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            color: 'var(--color-ink-mute)',
+            letterSpacing: '0.06em',
+          }}
+        >
+          {label}
+        </span>
+        <ChevronRight
+          size={11}
+          strokeWidth={1.5}
+          style={{ color: 'var(--color-ink-faint)' }}
+        />
+        <span className="mono" style={{ fontSize: 11, color: 'var(--color-ink)' }}>
+          {subtitle}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close inspector"
+        style={{ padding: 4, color: 'var(--color-ink-mute)' }}
+      >
+        <X size={14} strokeWidth={1.5} />
+      </button>
     </div>
   );
 }

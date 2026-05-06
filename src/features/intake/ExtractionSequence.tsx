@@ -3,6 +3,7 @@ import { useIntake } from './intakeStore';
 import { SourceDocPreview } from './SourceDocPreview';
 import { ExtractedView } from './ExtractedView';
 import { Inspector } from './Inspector';
+import { EnrichmentSection } from '@/features/enrichment';
 
 /**
  * The two-column composition that frames the cinematic extraction and,
@@ -66,7 +67,9 @@ export function ExtractionSequence() {
         {phase === 'receiving' || phase === 'reading' ? (
           <ExtractingHeader phase={phase} />
         ) : (
-          <ExtractedView />
+          <ExtractedView>
+            <EnrichmentSection />
+          </ExtractedView>
         )}
         <Inspector />
       </motion.div>
