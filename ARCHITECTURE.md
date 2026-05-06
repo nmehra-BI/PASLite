@@ -79,38 +79,63 @@ computed, or when the artifact has never been computed at all.
 src/store/store.ts
 
 RanBerriState {
-  submission: Submission | null            // module 2 loads this
-  auditLog:   AuditEvent[]                 // append-only
-  artifacts:  Record<ArtifactKey, { computedAt: string | null }>
-                                           // enrichment, conflicts, rating,
-                                           // quote, recommendation
+  submission: Submission | null            // derived from audit log
+  auditLog:   AuditEvent[]                 // CANONICAL — append-only,
+                                           // replay-sufficient payloads
+  artifacts:  Record<ArtifactKey, {
+                computedAt:  string | null
+                staleSince:  string | null  // set on stale, cleared on
+                                           // computed
+              }>
   lifecycle:  { cursor, now }              // ribbon scrubbing
   ui:         { canvasMode }               // closed | compact | expanded
 
-  setSubmission, appendAuditEvent, correctField,
-  markArtifactComputed, markArtifactStale,
+  // event-emitting actions (the only way state changes):
+  appendAuditEvent
+  applyCorrection            // user-driven, walks dep graph
+  restoreCorrection          // system-driven, no dep walk
+  markArtifactComputed       // emits artifact.computed
+  markArtifactStale          // emits artifact.stale
+
+  // pure UI:
   scrubLifecycle, setCanvasMode, reset
 }
 ```
 
-Two invariants the store enforces, which later modules must respect:
+`src/store/replay.ts` exports the pure `replay(events): { submission,
+artifacts, intake }` reducer. Used both by `merge` on rehydrate and by
+the dev console to inspect log → state determinism.
 
-1. **Field corrections invalidate the artifact closure derived from the
+Three invariants the store enforces, which later modules must respect:
+
+1. **The audit log is the canonical persistence form.** `partialize`
+   writes only `auditLog`, `lifecycle`, and `ui` to localStorage. On
+   rehydrate, `replay()` reconstructs `submission` and `artifacts`
+   from the log alone. Every state-mutating action MUST emit an event
+   with a replay-sufficient payload &mdash; otherwise refresh loses
+   work. The materialised state in the store is derived; the events
+   are the truth.
+2. **Field corrections invalidate the artifact closure derived from the
    dependency graph.** `applyCorrection(path, correction)` reads the
-   `Field` at `path`, stamps `underwriterCorrected`, writes it back into
-   the submission tree, then walks `DEPENDENCY_GRAPH` to find every
-   artifact whose `sources` include the corrected path (or include a
-   pattern that matches it via the `[*]` glob), takes the transitive
-   closure over `downstream` edges, and clears `computedAt` on exactly
-   that set. Conservative fallback: if no artifact registers the path
-   as a source, every artifact is invalidated &mdash; the graph is an
-   optimisation, not a safety boundary. Recomputation remains explicit:
-   the user clicks rerun.
-2. **Audit events are append-only.** Use `appendAuditEvent`; never
-   mutate or remove an existing entry. Every `applyCorrection` call
-   writes one `field.corrected` plus one `artifact.stale` per
-   invalidated artifact, so the DecisionTrail shows both the cause and
-   each effect.
+   `Field` at `path`, walks `DEPENDENCY_GRAPH` to find the affected
+   closure, and emits one `field.corrected` event (with value,
+   correctedBy, reason) plus one `artifact.stale` per affected
+   artifact. The reducer applies these to materialised state.
+   Conservative fallback: unrecognised paths invalidate every
+   artifact &mdash; the graph is an optimisation, not a safety
+   boundary. Recomputation remains explicit.
+3. **Re-application of preserved corrections is system-actored.**
+   `restoreCorrection` (called only by the rerun engine) emits a
+   `field.corrected` with `actor: { kind: 'system', modelVersion }`
+   and `note: 'preserved across rerun'`. The original underwriter's
+   `correctedBy` and `correctedAt` are recorded in the event payload.
+   The dep graph is **not** walked &mdash; downstream artifacts were
+   already invalidated by the rerun's snapshot replacement, so
+   re-fired stale events would be redundant.
+
+Audit events are **append-only**. Use `appendAuditEvent`; never mutate
+or remove an existing entry. The DecisionTrail shows the trail; the
+reducer derives state.
 
 ## The dependency graph
 

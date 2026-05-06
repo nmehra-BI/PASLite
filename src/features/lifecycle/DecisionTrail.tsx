@@ -4,6 +4,7 @@ import { ALL_ARTIFACTS, type ArtifactKey } from '@/lib/deps';
 
 const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'submission.received': 'Submission received',
+  'submission.created': 'Submission created',
   'email.received': 'Email received',
   'extraction.started': 'Extraction started',
   'extraction.fieldExtracted': 'Field extracted',
@@ -17,6 +18,7 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'quote.issued': 'Quote issued',
   'recommendation.generated': 'Recommendation generated',
   'decision.recorded': 'Decision recorded',
+  'artifact.computed': 'Artifact computed',
   'artifact.stale': 'Artifact marked stale',
 };
 
@@ -46,7 +48,12 @@ function dotTone(kind: AuditEvent['kind']): string {
   if (kind === 'gap.flagged' || kind === 'conflict.flagged' || kind === 'artifact.stale')
     return 'var(--color-warn)';
   if (kind === 'field.corrected') return 'var(--color-accent)';
-  if (kind === 'extraction.completed' || kind === 'rating.computed' || kind === 'quote.issued')
+  if (
+    kind === 'extraction.completed' ||
+    kind === 'rating.computed' ||
+    kind === 'quote.issued' ||
+    kind === 'artifact.computed'
+  )
     return 'var(--color-success)';
   return 'var(--color-ink)';
 }
@@ -65,10 +72,14 @@ type EventEntry = {
 };
 
 function aggregate(log: AuditEvent[]): EventEntry[] {
-  // Skip extraction.fieldExtracted entries; they are already summarised
-  // by extraction.completed (count + avg confidence). Showing them
-  // individually would flood the rail.
-  const filtered = log.filter((e) => e.kind !== 'extraction.fieldExtracted');
+  // Hide replay-only / per-field-noise events. extraction.fieldExtracted
+  // is already summarised by extraction.completed; submission.created is
+  // a snapshot whose user-facing analogue is email.received.
+  const filtered = log.filter(
+    (e) =>
+      e.kind !== 'extraction.fieldExtracted' &&
+      e.kind !== 'submission.created',
+  );
   return filtered.map((event) => {
     if (event.kind === 'extraction.completed') {
       return {
@@ -81,9 +92,15 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
       return { kind: 'event', event, subtitle: event.description };
     }
     if (event.kind === 'field.corrected') {
-      return { kind: 'event', event, subtitle: event.fieldPath };
+      const subtitle = event.note
+        ? `${event.fieldPath} · ${event.note}`
+        : event.fieldPath;
+      return { kind: 'event', event, subtitle };
     }
     if (event.kind === 'artifact.stale') {
+      return { kind: 'event', event, subtitle: event.artifact };
+    }
+    if (event.kind === 'artifact.computed') {
       return { kind: 'event', event, subtitle: event.artifact };
     }
     if (event.kind === 'extraction.rerun') {

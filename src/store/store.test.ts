@@ -52,7 +52,14 @@ function markEverythingComputed(): void {
 describe('applyCorrection — turnover £8.4M → £7.9M', () => {
   beforeEach(() => {
     useRanBerri.getState().reset();
-    useRanBerri.getState().setSubmission(buildSubmission());
+    useRanBerri.getState().appendAuditEvent({
+      actor: { kind: 'broker', id: 'test' },
+      kind: 'submission.created',
+      submissionId: 'sub_test_1',
+      folio: 'TEST-001',
+      broker: 'BrokerCo',
+      submission: buildSubmission(),
+    });
     markEverythingComputed();
   });
 
@@ -131,7 +138,14 @@ describe('applyCorrection — guards', () => {
   });
 
   it('throws when the path does not resolve to a Field', () => {
-    useRanBerri.getState().setSubmission(buildSubmission());
+    useRanBerri.getState().appendAuditEvent({
+      actor: { kind: 'broker', id: 'test' },
+      kind: 'submission.created',
+      submissionId: 'sub_test_1',
+      folio: 'TEST-001',
+      broker: 'BrokerCo',
+      submission: buildSubmission(),
+    });
     expect(() =>
       useRanBerri.getState().applyCorrection('insured', {
         value: 1,

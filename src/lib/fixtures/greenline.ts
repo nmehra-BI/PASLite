@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { createField, extractField } from '@/lib/field';
+import { createField } from '@/lib/field';
+import { applyExtraction } from '@/store/replay';
 import type { Submission, LossRun } from './types';
 
 /**
@@ -118,7 +119,7 @@ export const GREENLINE_SLIP: SlipPage[] = [
   },
 ];
 
-// ---------- the populated Submission ----------
+// ---------- the broker-stated layer ----------
 
 const GREENLINE_LOSS_RUNS: LossRun[] = [
   { year: 2020, type: 'slips and trips', amount: 8_400, status: 'paid' },
@@ -136,86 +137,91 @@ const GREENLINE_MATERIALS = [
 ];
 
 /**
- * Build the populated Submission, with both `brokerStated` and
- * `systemExtracted` layers filled. `underwriterCorrected` stays null
- * &mdash; corrections only land via `applyCorrection` from the
- * inspector.
+ * The Submission shell at the moment the email arrives — broker layer
+ * populated, system + underwriter layers null. The cinematic
+ * extraction then emits one `extraction.fieldExtracted` event per
+ * field, each carrying the value the AI parses from the slip; replay
+ * lifts those into `systemExtracted`.
+ *
+ * The fire-suppression field is a deliberate gap: the broker stated
+ * nothing (brokerStated stays null on that Field). The AI's inferred
+ * value lands via the extraction event with confidence 0.88.
  */
-export function getGreenlineSubmission(): Submission {
-  const ext = <T,>(brokerValue: T, value: T, sourceRef: string, confidence: number) =>
-    extractField(createField<T>(brokerValue), {
-      value,
-      confidence,
-      sourceRef,
-      extractedAt: EXTRACTION_AT,
-      modelVersion: MODEL_VERSION,
-    });
-
-  // Field where the broker did not state a value but the AI inferred one
-  // (the fire-suppression gap). brokerStated stays null.
-  const inferredGap = <T,>(value: T, sourceRef: string, confidence: number) =>
-    extractField(createField<T>(null), {
-      value,
-      confidence,
-      sourceRef,
-      extractedAt: EXTRACTION_AT,
-      modelVersion: MODEL_VERSION,
-    });
-
+export function getGreenlineBrokerSubmission(): Submission {
   return {
     id: 'sub_greenline_2026_05',
     folio: 'MGA-PAS · folio 29481',
     receivedAt: RECEIVED_AT,
-    broker: ext('SureStep Brokers Ltd', 'SureStep Brokers Ltd', 'email:from', 0.99),
+    broker: createField('SureStep Brokers Ltd'),
 
     insured: {
-      legalName: ext('Greenline Recycling Ltd', 'Greenline Recycling Ltd', 'slip:p2:l12', 0.99),
-      tradingName: ext('Greenline', 'Greenline', 'slip:p2:l11', 0.97),
-      companiesHouseNumber: ext('07442198', '07442198', 'slip:p2:l13', 0.98),
-      yearsTrading: ext(12, 12, 'slip:p2:l17', 0.95),
-      turnover: ext(8_420_000, 8_420_000, 'slip:p2:l14', 0.96),
-      turnoverPrior: ext(7_910_000, 7_910_000, 'slip:p2:l15', 0.96),
+      legalName: createField('Greenline Recycling Ltd'),
+      tradingName: createField('Greenline'),
+      companiesHouseNumber: createField('07442198'),
+      yearsTrading: createField(12),
+      turnover: createField(8_420_000),
+      turnoverPrior: createField(7_910_000),
     },
 
     cover: {
-      inceptionDate: ext('2026-05-15T11:00:00Z', '2026-05-15T11:00:00Z', 'slip:p4:l28', 0.97),
-      expiryDate: ext('2027-05-15T11:00:00Z', '2027-05-15T11:00:00Z', 'slip:p4:l29', 0.96),
-      term: ext('12 months', '12 months', 'slip:p4:l29', 0.99),
-      publicLiabilityLimit: ext(5_000_000, 5_000_000, 'slip:p1:l8', 0.9),
-      employersLiabilityLimit: ext(10_000_000, 10_000_000, 'slip:p1:l8', 0.9),
-      environmentalImpairmentLimit: ext(2_000_000, 2_000_000, 'slip:p1:l8', 0.9),
+      inceptionDate: createField('2026-05-15T11:00:00Z'),
+      expiryDate: createField('2027-05-15T11:00:00Z'),
+      term: createField('12 months'),
+      publicLiabilityLimit: createField(5_000_000),
+      employersLiabilityLimit: createField(10_000_000),
+      environmentalImpairmentLimit: createField(2_000_000),
     },
 
     sites: [
       {
         id: 'site_birmingham',
-        name: ext('Birmingham (HQ)', 'Birmingham (HQ)', 'slip:p3:l18', 0.94),
-        sqm: ext(2_800, 2_800, 'slip:p3:l18', 0.94),
-        permitRef: ext('EAWML-88301', 'EAWML-88301', 'slip:p3:l19', 0.96),
-        permitExpiry: ext('2027-08-12', '2027-08-12', 'slip:p3:l19', 0.95),
+        name: createField('Birmingham (HQ)'),
+        sqm: createField(2_800),
+        permitRef: createField('EAWML-88301'),
+        permitExpiry: createField('2027-08-12'),
       },
       {
         id: 'site_leeds',
-        name: ext('Leeds', 'Leeds', 'slip:p3:l20', 0.94),
-        sqm: ext(3_400, 3_400, 'slip:p3:l20', 0.94),
-        permitRef: ext('EAWML-99214', 'EAWML-99214', 'slip:p3:l21', 0.96),
-        permitExpiry: ext('2026-07-01', '2026-07-01', 'slip:p3:l21', 0.95),
+        name: createField('Leeds'),
+        sqm: createField(3_400),
+        permitRef: createField('EAWML-99214'),
+        permitExpiry: createField('2026-07-01'),
       },
       {
         id: 'site_glasgow',
-        name: ext('Glasgow', 'Glasgow', 'slip:p3:l22', 0.94),
-        sqm: ext(2_100, 2_100, 'slip:p3:l22', 0.94),
-        permitRef: ext('EAWML-77450', 'EAWML-77450', 'slip:p3:l23', 0.96),
-        permitExpiry: ext('2028-09-04', '2028-09-04', 'slip:p3:l23', 0.95),
+        name: createField('Glasgow'),
+        sqm: createField(2_100),
+        permitRef: createField('EAWML-77450'),
+        permitExpiry: createField('2028-09-04'),
       },
     ],
 
-    materials: ext(GREENLINE_MATERIALS, GREENLINE_MATERIALS, 'slip:p4:l24', 0.92),
-    fireSuppressionDisclosed: inferredGap(false, 'slip:p4:l26', 0.88),
-    lossRuns: ext(GREENLINE_LOSS_RUNS, GREENLINE_LOSS_RUNS, 'lossruns:p1', 0.95),
-    statedLossRatio: ext(0.38, 0.38, 'lossruns:summary', 0.93),
-    brokerTargetPremium: ext(45_000, 45_000, 'email:body', 0.85),
+    materials: createField<string[]>(GREENLINE_MATERIALS),
+    // Broker stated nothing about fire suppression — this is the gap.
+    fireSuppressionDisclosed: createField<boolean>(null),
+    lossRuns: createField<LossRun[]>(GREENLINE_LOSS_RUNS),
+    statedLossRatio: createField(0.38),
+    brokerTargetPremium: createField(45_000),
   };
+}
+
+/**
+ * Convenience: the **fully-populated** Submission, broker + system
+ * layers filled. Used by tests and by any direct-snapshot callers;
+ * callers that drive the demo through the audit log do NOT use this
+ * (they emit events and let `replay()` materialise state).
+ */
+export function getGreenlineSubmission(): Submission {
+  const sub = getGreenlineBrokerSubmission();
+  for (const step of getExtractionSchedule()) {
+    applyExtraction(sub, step.fieldPath, step.value, {
+      confidence: step.confidence,
+      sourceRef: step.sourceRef,
+      extractedAt: EXTRACTION_AT,
+      modelVersion: MODEL_VERSION,
+    });
+  }
+  return sub;
 }
 
 // ---------- extraction schedule ----------
@@ -225,6 +231,8 @@ export type ExtractionStep = {
   key: string;
   /** Path into the Submission tree (for inspector + dep graph). */
   fieldPath: string;
+  /** The value the AI returns for this field. */
+  value: unknown;
   /** Display label rendered in the editorial extracted view group. */
   groupKey: ExtractionGroup;
   /** Pretty label shown next to the value in the extracted view. */
@@ -248,10 +256,35 @@ export type ExtractionGroup =
   | 'lossHistory'
   | 'brokerTarget';
 
+const SITES_EXTRACTED = [
+  {
+    name: 'Birmingham (HQ)',
+    sqm: 2_800,
+    permitRef: 'EAWML-88301',
+    permitExpiry: '2027-08-12',
+  },
+  {
+    name: 'Leeds',
+    sqm: 3_400,
+    permitRef: 'EAWML-99214',
+    permitExpiry: '2026-07-01',
+  },
+  {
+    name: 'Glasgow',
+    sqm: 2_100,
+    permitRef: 'EAWML-77450',
+    permitExpiry: '2028-09-04',
+  },
+];
+
 /**
- * The cinematic timing. Total extraction window ~2.4s after the
- * "reading" phase; the orchestrator wraps that in receiving + reading
- * for a total of ~4s.
+ * The cinematic timing. ~150ms stagger × 12 fields ≈ 1.8s of
+ * extraction; the orchestrator wraps that in receiving + reading for a
+ * total of ~4s.
+ *
+ * `sites` and `lossRuns` are aggregate steps: the value is the whole
+ * record array, and replay's `applyExtraction` walks into the structure
+ * to set systemExtracted on each child Field<T>.
  */
 export function getExtractionSchedule(): ExtractionStep[] {
   let t = 0;
@@ -266,6 +299,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'insured.legalName',
       fieldPath: 'insured.legalName',
+      value: 'Greenline Recycling Ltd',
       groupKey: 'insured',
       label: 'Legal name',
       sourceRef: 'slip:p2:l12',
@@ -274,6 +308,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'insured.companiesHouseNumber',
       fieldPath: 'insured.companiesHouseNumber',
+      value: '07442198',
       groupKey: 'insured',
       label: 'Companies House',
       sourceRef: 'slip:p2:l13',
@@ -282,6 +317,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'insured.turnover',
       fieldPath: 'insured.turnover',
+      value: 8_420_000,
       groupKey: 'turnover',
       label: 'FY24',
       sourceRef: 'slip:p2:l14',
@@ -290,6 +326,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'insured.turnoverPrior',
       fieldPath: 'insured.turnoverPrior',
+      value: 7_910_000,
       groupKey: 'turnover',
       label: 'FY23',
       sourceRef: 'slip:p2:l15',
@@ -298,6 +335,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'sites',
       fieldPath: 'sites',
+      value: SITES_EXTRACTED,
       groupKey: 'sites',
       sourceRef: 'slip:p3',
       confidence: 0.94,
@@ -305,6 +343,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'materials',
       fieldPath: 'materials',
+      value: GREENLINE_MATERIALS,
       groupKey: 'materials',
       sourceRef: 'slip:p4:l24',
       confidence: 0.92,
@@ -312,6 +351,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'cover.inceptionDate',
       fieldPath: 'cover.inceptionDate',
+      value: '2026-05-15T11:00:00Z',
       groupKey: 'coverage',
       label: 'Inception',
       sourceRef: 'slip:p4:l28',
@@ -320,6 +360,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'cover.term',
       fieldPath: 'cover.term',
+      value: '12 months',
       groupKey: 'coverage',
       label: 'Term',
       sourceRef: 'slip:p4:l29',
@@ -328,6 +369,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'lossRuns',
       fieldPath: 'lossRuns',
+      value: GREENLINE_LOSS_RUNS,
       groupKey: 'lossHistory',
       sourceRef: 'lossruns:p1',
       confidence: 0.95,
@@ -335,6 +377,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'statedLossRatio',
       fieldPath: 'statedLossRatio',
+      value: 0.38,
       groupKey: 'lossHistory',
       label: 'Stated loss ratio',
       sourceRef: 'lossruns:summary',
@@ -343,6 +386,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'fireSuppressionDisclosed',
       fieldPath: 'fireSuppressionDisclosed',
+      value: false,
       groupKey: 'coverage',
       label: 'Fire suppression',
       sourceRef: 'slip:p4:l26',
@@ -352,6 +396,7 @@ export function getExtractionSchedule(): ExtractionStep[] {
     step({
       key: 'brokerTargetPremium',
       fieldPath: 'brokerTargetPremium',
+      value: 45_000,
       groupKey: 'brokerTarget',
       label: 'Broker target',
       sourceRef: 'email:body',
