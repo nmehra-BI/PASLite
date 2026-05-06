@@ -45,7 +45,7 @@ export function BindCeremony() {
       // green hash 2.
       warrantiesAtSendSha: computeSha(warranties),
       sanctionsRefreshedAt:
-        enrichment.sources['Experian']?.returnedAt ?? null,
+        enrichment.sources['experian-sanctions']?.returnedAt ?? null,
       capacity: getCapacityLedger(),
       capacityConsumption: GREENLINE_CONSUMPTION,
     });

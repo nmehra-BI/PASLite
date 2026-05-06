@@ -58,7 +58,7 @@ export function confirmHash(hashId: HashId, confirmedBy: string = 'nm') {
     quotedSlipSha: quote.slipSha,
     warranties,
     warrantiesAtSendSha: computeSha(warranties),
-    sanctionsRefreshedAt: state.enrichment.sources['Experian']?.returnedAt ?? null,
+    sanctionsRefreshedAt: state.enrichment.sources['experian-sanctions']?.returnedAt ?? null,
     capacity: getCapacityLedger(),
     capacityConsumption: GREENLINE_CONSUMPTION,
   });
@@ -111,7 +111,7 @@ export function overrideHash(input: {
     quotedSlipSha: quote.slipSha,
     warranties,
     warrantiesAtSendSha: computeSha(warranties),
-    sanctionsRefreshedAt: state.enrichment.sources['Experian']?.returnedAt ?? null,
+    sanctionsRefreshedAt: state.enrichment.sources['experian-sanctions']?.returnedAt ?? null,
     capacity: getCapacityLedger(),
     capacityConsumption: GREENLINE_CONSUMPTION,
   });
@@ -150,11 +150,15 @@ export function commitBind(signedBy: string = 'nm') {
     throw new Error('commitBind: not all four hashes signed');
   }
 
-  // POL-29481 from SUB-29481 / folio 29481
+  // Derive POL-29481 from folio "MGA-PAS · folio 29481" (or fall back
+  // to a SUB-* id transformation if the folio is unconventional).
   const submissionId = submission.id;
-  const policyRef = submissionId.startsWith('SUB-')
-    ? submissionId.replace(/^SUB-/, 'POL-')
-    : `POL-${submissionId}`;
+  const folioNum = submission.folio.match(/folio\s+(\d+)/i)?.[1];
+  const policyRef = folioNum
+    ? `POL-${folioNum}`
+    : submissionId.startsWith('SUB-')
+      ? submissionId.replace(/^SUB-/, 'POL-')
+      : `POL-${submissionId}`;
 
   const premium = quote.slipPremium ?? 0;
 
