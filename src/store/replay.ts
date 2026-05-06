@@ -155,13 +155,97 @@ export function freshTriage(): TriageReplayState {
   };
 }
 
+// ---------- rating-derived state ----------
+
+export type CellReplayRecord = {
+  ref: string;
+  label: string;
+  op?: '×' | '+' | '−' | '';
+  value: number;
+  format: 'currency' | 'percent' | 'multiplier';
+  subtotalAfter: number | null;
+  formula: string;
+  inputs: Array<{ label: string; path: string; value: unknown }>;
+  emittedAt: string;
+};
+
+export type RatingReplay = {
+  phase: 'pending' | 'evaluating' | 'settled';
+  cells: CellReplayRecord[];
+  output: {
+    premium: number;
+    sha: string;
+    version: string;
+    tier: string;
+    computedAt: string;
+  } | null;
+  iteration: number;
+};
+
+export function freshRating(): RatingReplay {
+  return { phase: 'pending', cells: [], output: null, iteration: 1 };
+}
+
+// ---------- quote-derived state ----------
+
+export type SlipFieldEdit = {
+  value: string;
+  editedBy: string;
+  editedAt: string;
+};
+
+export type EmailDraft = {
+  subject: string;
+  body: string;
+  recipient: string;
+  cc: string[];
+};
+
+export type QuoteReplay = {
+  phase: 'idle' | 'slip-ready' | 'sending' | 'sent';
+  /** Slip reference, e.g. POL-29481-Q1. */
+  slipRef: string | null;
+  /** Premium the slip was generated against. */
+  slipPremium: number | null;
+  slipSha: string | null;
+  /** Per-field edits keyed by stable field key (e.g. 'aggregate'). */
+  slipEdits: Record<string, SlipFieldEdit>;
+  /** Number of slip edits preserved across the most recent regeneration. */
+  preservedEdits: number;
+  email: EmailDraft | null;
+  sentAt: string | null;
+  sentBy: string | null;
+  /**
+   * Set when the rating that backs this quote has been re-run since it
+   * was sent. The materialised `slipPremium` becomes the *sent* premium;
+   * the live rating output may differ.
+   */
+  staleSinceSent: { reason: string; at: string } | null;
+};
+
+export function freshQuote(): QuoteReplay {
+  return {
+    phase: 'idle',
+    slipRef: null,
+    slipPremium: null,
+    slipSha: null,
+    slipEdits: {},
+    preservedEdits: 0,
+    email: null,
+    sentAt: null,
+    sentBy: null,
+    staleSinceSent: null,
+  };
+}
+
 // ---------- submission lifecycle state ----------
 
 export type SubmissionLifecycleState =
   | 'active'
   | 'rating-pending'
   | 'referred'
-  | 'declined';
+  | 'declined'
+  | 'quote-sent';
 
 export type ReferralRecord = {
   reviewer: string;
@@ -187,6 +271,8 @@ export type ReplayResult = {
   intake: IntakeReplayState;
   enrichment: EnrichmentReplayState;
   triage: TriageReplayState;
+  rating: RatingReplay;
+  quote: QuoteReplay;
   submissionState: SubmissionLifecycleState;
   referral: ReferralRecord | null;
   decline: DeclineRecord | null;
@@ -239,6 +325,8 @@ export function replay(events: AuditEvent[]): ReplayResult {
   const intake = freshIntake();
   const enrichment = freshEnrichment();
   const triage = freshTriage();
+  const rating = freshRating();
+  const quote = freshQuote();
   let submissionState: SubmissionLifecycleState = 'active';
   let referral: ReferralRecord | null = null;
   let decline: DeclineRecord | null = null;
@@ -574,6 +662,129 @@ export function replay(events: AuditEvent[]): ReplayResult {
         };
         break;
 
+      // ---------- rating ----------
+
+      case 'rating.started':
+        rating.phase = 'evaluating';
+        rating.cells = [];
+        rating.iteration = e.iteration;
+        rating.output = null;
+        break;
+
+      case 'rating.cellComputed': {
+        const idx = rating.cells.findIndex((c) => c.ref === e.ref);
+        const next: CellReplayRecord = {
+          ref: e.ref,
+          label: e.label,
+          op: e.op,
+          value: e.value,
+          format: e.format,
+          subtotalAfter: e.subtotalAfter,
+          formula: e.formula,
+          inputs: e.cellInputs,
+          emittedAt: e.at,
+        };
+        if (idx >= 0) rating.cells[idx] = next;
+        else rating.cells.push(next);
+        break;
+      }
+
+      case 'rating.completed':
+        rating.phase = 'settled';
+        rating.output = {
+          premium: e.premium,
+          sha: e.sha,
+          version: e.version,
+          tier: e.tier,
+          computedAt: e.at,
+        };
+        break;
+
+      case 'rating.rerun':
+        rating.phase = 'pending';
+        rating.cells = [];
+        rating.iteration = e.nextIteration;
+        rating.output = null;
+        break;
+
+      // ---------- slip ----------
+
+      case 'slip.generated':
+        quote.phase = 'slip-ready';
+        quote.slipRef = e.slipRef;
+        quote.slipPremium = e.premium;
+        quote.slipSha = e.sha;
+        // preserve prior slip edits so user-edited fields survive regen
+        break;
+
+      case 'slip.regenerated':
+        quote.preservedEdits = e.preservedEdits;
+        // edits in `quote.slipEdits` are intentionally NOT cleared
+        break;
+
+      case 'slip.fieldEdited':
+        quote.slipEdits[e.fieldKey] = {
+          value: e.nextValue,
+          editedBy: e.editedBy,
+          editedAt: e.at,
+        };
+        break;
+
+      // ---------- email + send ----------
+
+      case 'email.drafted':
+        quote.email = {
+          subject: e.subject,
+          body: e.body,
+          recipient: e.recipient,
+          cc: [],
+        };
+        break;
+
+      case 'email.edited':
+        if (quote.email) {
+          if (e.field === 'subject') quote.email.subject = e.nextValue;
+          else if (e.field === 'body') quote.email.body = e.nextValue;
+          else if (e.field === 'cc')
+            quote.email.cc = e.nextValue
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+        }
+        break;
+
+      case 'quote.sent':
+        quote.phase = 'sent';
+        quote.sentAt = e.at;
+        quote.sentBy = e.sentBy;
+        if (quote.email) {
+          quote.email.subject = e.subject;
+          quote.email.body = e.body;
+          quote.email.recipient = e.recipient;
+        } else {
+          quote.email = {
+            subject: e.subject,
+            body: e.body,
+            recipient: e.recipient,
+            cc: [],
+          };
+        }
+        submissionState = 'quote-sent';
+        break;
+
+      case 'quote.recalled':
+        quote.phase = 'slip-ready';
+        quote.sentAt = null;
+        quote.sentBy = null;
+        submissionState = 'rating-pending';
+        break;
+
+      case 'quote.markedStale':
+        if (quote.phase === 'sent') {
+          quote.staleSinceSent = { reason: e.reason, at: e.at };
+        }
+        break;
+
       // Pass-through:
       case 'submission.received':
       case 'gap.flagged':
@@ -592,6 +803,8 @@ export function replay(events: AuditEvent[]): ReplayResult {
     intake,
     enrichment,
     triage,
+    rating,
+    quote,
     submissionState,
     referral,
     decline,

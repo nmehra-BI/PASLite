@@ -82,6 +82,7 @@ export type Submission = {
 export type LifecyclePhase = 'pre-bind' | 'in-force' | 'expired';
 export type LifecycleMilestone =
   | 'quote'
+  | 'quoted'
   | 'bind'
   | 'mta-04'
   | 'cancel'

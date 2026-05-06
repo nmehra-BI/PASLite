@@ -160,6 +160,48 @@ the human disagreed.
   and rating; any upstream change marks it stale and surfaces *rerun
   triage* in the section header.
 
+### Module 5 — rating + quote slip + send-to-broker
+
+- **Sealed rating engine** (`src/lib/rating/`): deterministic Tier-2
+  W&amp;R calculation, eight cells (A1, B14, C22, D31, E38, F44, G51,
+  H58), each rounded to whole pounds. Versioned `recyclesure_v3.2.xlsx
+  · sha-7f2a`. Same inputs → same output. Greenline default state
+  produces **£38,265**.
+- **Cinematic build-up**: cells reveal on a 120ms stagger; H58 GROSS
+  PREMIUM lands in coral with an extra 200ms pause. The right column
+  is the verdict card (£38,265 in serif, sealed-version mono caption).
+  Click any cell to open the inspector with formula, inputs, and a
+  what-if sensitivity slider (B14 turnover, F44 LR) — the slider
+  doesn&rsquo;t propagate; commitment requires correcting upstream.
+- **Quote slip** (`src/features/quote/QuoteSlip.tsx`): institutional
+  Lloyd&rsquo;s aesthetic — Source Serif 4 body, mono refs, italic
+  warranties (numbered i. ii. iii.), mono section labels tracked
+  0.12em, paper-warm background, coral-mark + RanBerri wordmark in
+  the corner. Premium displayed in 36px serif with coral £ accent.
+  Editable: coverage description, term, aggregate, warranty text,
+  validity, signature, subjectivities. Not editable: refs, premium,
+  inception (correct upstream). Edits show a 30s coral dot;
+  hover-tooltip surfaces edit history.
+- **Two-column send overlay**: slip preview on the left (decorative,
+  desaturated 0.85, scaled 0.92), email composition on the right.
+  Sonnet-style covering email is generated from submission state —
+  references the broker target gap, loss-ratio context, the warranties
+  to flag — and **streams in word-by-word over ~1.5s** (the only
+  surface in the product where streaming text earns its place; the
+  AI is genuinely writing). User can edit; edits emit
+  `email.edited` events.
+- **Send mocks the network** (600ms), advances submission to
+  `quote-sent`, advances `lifecycle.now` to the new **Quoted**
+  milestone (~14% on the ribbon). Top-of-canvas info-bg banner: *Quote
+  sent to Sarah Whitfield · awaiting response*.
+- **Stale-quote pattern**: if rating becomes stale after the quote was
+  sent, the banner flips warn-bg with *Sent quote is stale · current
+  rating produces £X · consider sending a revised quote* and a
+  `[Send revised quote]` affordance reopens the send modal.
+- **Re-rating** preserves user edits to slip text via
+  `slip.fieldEdited` events kept in the audit log; the slip
+  auto-regenerates against the new premium when rating settles, and
+  a `slip.regenerated` event records the count of preserved edits.
 ## What&rsquo;s planned
 
 - **Module 2** &mdash; submission intake &amp; field extraction

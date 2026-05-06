@@ -22,6 +22,7 @@ type SeamSpec = {
 
 const MILESTONES: MilestoneSpec[] = [
   { key: 'quote', label: 'Quote', at: 0.04, real: true },
+  { key: 'quoted', label: 'Quoted', at: 0.14, real: true },
   { key: 'bind', label: 'Bind', at: 0.26, real: false },
   { key: 'mta-04', label: 'MTA-04', at: 0.5, real: false },
   { key: 'cancel', label: 'Cancel', at: 0.74, real: false },

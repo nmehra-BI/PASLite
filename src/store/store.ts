@@ -16,11 +16,15 @@ import {
   applyExtraction,
   freshArtifacts,
   freshEnrichment,
+  freshQuote,
+  freshRating,
   freshTriage,
   replay,
   type ArtifactState,
   type DeclineRecord,
   type EnrichmentReplayState,
+  type QuoteReplay,
+  type RatingReplay,
   type ReferralRecord,
   type SourceStatus,
   type SubmissionLifecycleState,
@@ -60,6 +64,8 @@ export type RanBerriState = {
   artifacts: Record<ArtifactKey, ArtifactState>;
   enrichment: EnrichmentReplayState;
   triage: TriageReplayState;
+  rating: RatingReplay;
+  quote: QuoteReplay;
   submissionState: SubmissionLifecycleState;
   referral: ReferralRecord | null;
   decline: DeclineRecord | null;
@@ -166,6 +172,29 @@ export type RanBerriState = {
     declinedBy: string;
   }) => void;
 
+  /** Edit a slip field in place (auditable). */
+  editSlipField: (input: {
+    fieldKey: string;
+    previousValue: string;
+    nextValue: string;
+    editedBy: string;
+  }) => void;
+
+  /** Edit the email draft in place. */
+  editEmailField: (input: {
+    field: 'subject' | 'body' | 'cc';
+    nextValue: string;
+    editedBy: string;
+  }) => void;
+
+  /** Submit the drafted quote to the broker. */
+  sendQuote: (input: {
+    sentBy: string;
+  }) => void;
+
+  /** Recall a sent quote (placeholder for v0.2). */
+  recallQuote: (recalledBy: string) => void;
+
   scrubLifecycle: (milestone: LifecycleMilestone) => void;
   setCanvasMode: (mode: 'closed' | 'compact' | 'expanded') => void;
   reset: () => void;
@@ -215,6 +244,8 @@ export const useRanBerri = create<RanBerriState>()(
       artifacts: freshArtifacts(),
       enrichment: freshEnrichment(),
       triage: freshTriage(),
+      rating: freshRating(),
+      quote: freshQuote(),
       submissionState: 'active',
       referral: null,
       decline: null,
@@ -536,6 +567,82 @@ export const useRanBerri = create<RanBerriState>()(
         }
       },
 
+      editSlipField: (input) => {
+        const submission = get().submission;
+        if (!submission) return;
+        if (get().submissionState !== 'active' && get().submissionState !== 'rating-pending')
+          return;
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: input.editedBy },
+          kind: 'slip.fieldEdited',
+          submissionId: submission.id,
+          fieldKey: input.fieldKey,
+          previousValue: input.previousValue,
+          nextValue: input.nextValue,
+          editedBy: input.editedBy,
+        });
+      },
+
+      editEmailField: (input) => {
+        const submission = get().submission;
+        if (!submission) return;
+        if (get().submissionState === 'declined' || get().submissionState === 'referred')
+          return;
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: input.editedBy },
+          kind: 'email.edited',
+          submissionId: submission.id,
+          field: input.field,
+          nextValue: input.nextValue,
+          editedBy: input.editedBy,
+        });
+      },
+
+      sendQuote: (input) => {
+        const submission = get().submission;
+        if (!submission) {
+          throw new Error('sendQuote: no active submission');
+        }
+        const email = get().quote.email;
+        if (!email) {
+          throw new Error('sendQuote: no email drafted');
+        }
+        if (get().submissionState === 'declined' || get().submissionState === 'referred') {
+          throw new Error('sendQuote: submission is read-only');
+        }
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: input.sentBy },
+          kind: 'quote.sent',
+          submissionId: submission.id,
+          slipRef: get().quote.slipRef ?? '',
+          recipient: email.recipient,
+          subject: email.subject,
+          body: email.body,
+          sentBy: input.sentBy,
+        });
+        // Lifecycle 'now' advances to the new 'quoted' marker.
+        set((s) => {
+          s.lifecycle.now = 'quoted';
+          s.lifecycle.cursor = 'quoted';
+        });
+      },
+
+      recallQuote: (recalledBy) => {
+        const submission = get().submission;
+        if (!submission) return;
+        if (get().submissionState !== 'quote-sent') return;
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: recalledBy },
+          kind: 'quote.recalled',
+          submissionId: submission.id,
+          recalledBy,
+        });
+        set((s) => {
+          s.lifecycle.now = 'quote';
+          s.lifecycle.cursor = 'quote';
+        });
+      },
+
       scrubLifecycle: (milestone) =>
         set((s) => {
           s.lifecycle.cursor = milestone;
@@ -553,6 +660,8 @@ export const useRanBerri = create<RanBerriState>()(
           s.artifacts = freshArtifacts();
           s.enrichment = freshEnrichment();
           s.triage = freshTriage();
+          s.rating = freshRating();
+          s.quote = freshQuote();
           s.submissionState = 'active';
           s.referral = null;
           s.decline = null;
@@ -579,6 +688,8 @@ export const useRanBerri = create<RanBerriState>()(
           merged.artifacts = result.artifacts;
           merged.enrichment = result.enrichment;
           merged.triage = result.triage;
+          merged.rating = result.rating;
+          merged.quote = result.quote;
           merged.submissionState = result.submissionState;
           merged.referral = result.referral;
           merged.decline = result.decline;
@@ -872,6 +983,125 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
         declinedBy: e.declinedBy,
         declinedAt: e.at,
       };
+      break;
+
+    // ---------- rating ----------
+
+    case 'rating.started':
+      s.rating.phase = 'evaluating';
+      s.rating.cells = [];
+      s.rating.iteration = e.iteration;
+      s.rating.output = null;
+      break;
+
+    case 'rating.cellComputed': {
+      const idx = s.rating.cells.findIndex((c) => c.ref === e.ref);
+      const next = {
+        ref: e.ref,
+        label: e.label,
+        op: e.op,
+        value: e.value,
+        format: e.format,
+        subtotalAfter: e.subtotalAfter,
+        formula: e.formula,
+        inputs: e.cellInputs,
+        emittedAt: e.at,
+      };
+      if (idx >= 0) s.rating.cells[idx] = next;
+      else s.rating.cells.push(next);
+      break;
+    }
+
+    case 'rating.completed':
+      s.rating.phase = 'settled';
+      s.rating.output = {
+        premium: e.premium,
+        sha: e.sha,
+        version: e.version,
+        tier: e.tier,
+        computedAt: e.at,
+      };
+      break;
+
+    case 'rating.rerun':
+      s.rating.phase = 'pending';
+      s.rating.cells = [];
+      s.rating.iteration = e.nextIteration;
+      s.rating.output = null;
+      break;
+
+    // ---------- slip + quote ----------
+
+    case 'slip.generated':
+      s.quote.phase = 'slip-ready';
+      s.quote.slipRef = e.slipRef;
+      s.quote.slipPremium = e.premium;
+      s.quote.slipSha = e.sha;
+      break;
+
+    case 'slip.regenerated':
+      s.quote.preservedEdits = e.preservedEdits;
+      break;
+
+    case 'slip.fieldEdited':
+      s.quote.slipEdits[e.fieldKey] = {
+        value: e.nextValue,
+        editedBy: e.editedBy,
+        editedAt: e.at,
+      };
+      break;
+
+    case 'email.drafted':
+      s.quote.email = {
+        subject: e.subject,
+        body: e.body,
+        recipient: e.recipient,
+        cc: [],
+      };
+      break;
+
+    case 'email.edited':
+      if (s.quote.email) {
+        if (e.field === 'subject') s.quote.email.subject = e.nextValue;
+        else if (e.field === 'body') s.quote.email.body = e.nextValue;
+        else if (e.field === 'cc')
+          s.quote.email.cc = e.nextValue
+            .split(',')
+            .map((x) => x.trim())
+            .filter(Boolean);
+      }
+      break;
+
+    case 'quote.sent':
+      s.quote.phase = 'sent';
+      s.quote.sentAt = e.at;
+      s.quote.sentBy = e.sentBy;
+      if (s.quote.email) {
+        s.quote.email.subject = e.subject;
+        s.quote.email.body = e.body;
+        s.quote.email.recipient = e.recipient;
+      } else {
+        s.quote.email = {
+          subject: e.subject,
+          body: e.body,
+          recipient: e.recipient,
+          cc: [],
+        };
+      }
+      s.submissionState = 'quote-sent';
+      break;
+
+    case 'quote.recalled':
+      s.quote.phase = 'slip-ready';
+      s.quote.sentAt = null;
+      s.quote.sentBy = null;
+      s.submissionState = 'rating-pending';
+      break;
+
+    case 'quote.markedStale':
+      if (s.quote.phase === 'sent') {
+        s.quote.staleSinceSent = { reason: e.reason, at: e.at };
+      }
       break;
 
     default:

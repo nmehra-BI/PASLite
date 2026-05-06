@@ -36,6 +36,18 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'submission.recalled': 'Submission recalled',
   'submission.declined': 'Submission declined',
   'rating.computed': 'Rating computed',
+  'rating.started': 'Rating started',
+  'rating.cellComputed': 'Rating cell computed',
+  'rating.completed': 'Rating completed',
+  'rating.rerun': 'Rating rerun',
+  'slip.generated': 'Quote slip generated',
+  'slip.fieldEdited': 'Slip field edited',
+  'slip.regenerated': 'Slip regenerated',
+  'email.drafted': 'Email drafted',
+  'email.edited': 'Email edited',
+  'quote.sent': 'Quote sent to broker',
+  'quote.recalled': 'Quote recalled',
+  'quote.markedStale': 'Quote marked stale',
   'quote.issued': 'Quote issued',
   'recommendation.generated': 'Recommendation generated',
   'decision.recorded': 'Decision recorded',
@@ -84,12 +96,16 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'triage.checkOverridden'
   )
     return 'var(--color-accent)';
-  if (kind === 'submission.declined') return 'var(--color-danger)';
+  if (kind === 'submission.declined' || kind === 'quote.markedStale')
+    return 'var(--color-danger)';
   if (
     kind === 'extraction.completed' ||
     kind === 'enrichment.completed' ||
     kind === 'rating.computed' ||
+    kind === 'rating.completed' ||
+    kind === 'slip.generated' ||
     kind === 'quote.issued' ||
+    kind === 'quote.sent' ||
     kind === 'artifact.computed' ||
     kind === 'conflict.dismissed' ||
     kind === 'gap.dismissed' ||
@@ -123,7 +139,10 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
       e.kind !== 'submission.created' &&
       e.kind !== 'enrichment.sourceQueried' &&
       e.kind !== 'enrichment.sourceReturned' &&
-      e.kind !== 'triage.checkEvaluated',
+      e.kind !== 'triage.checkEvaluated' &&
+      e.kind !== 'rating.cellComputed' &&
+      e.kind !== 'slip.fieldEdited' &&
+      e.kind !== 'email.edited',
   );
   return filtered.map((event) => {
     if (event.kind === 'extraction.completed') {
@@ -241,6 +260,33 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
         event,
         subtitle: event.reasonCategory,
       };
+    }
+    if (event.kind === 'rating.completed') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `£${event.premium.toLocaleString()} · ${event.tier} ${event.version} · ${event.sha}`,
+      };
+    }
+    if (event.kind === 'slip.generated') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.slipRef} · £${event.premium.toLocaleString()}`,
+      };
+    }
+    if (event.kind === 'email.drafted') {
+      return { kind: 'event', event, subtitle: event.recipient };
+    }
+    if (event.kind === 'quote.sent') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `to ${event.recipient}`,
+      };
+    }
+    if (event.kind === 'quote.markedStale') {
+      return { kind: 'event', event, subtitle: event.reason };
     }
     return { kind: 'event', event };
   });

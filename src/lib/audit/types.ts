@@ -252,6 +252,70 @@ export type AuditEvent = AuditEventBase &
         declinedBy: string;
       }
     | { kind: 'rating.computed'; submissionId: string; premium: number }
+
+    // Rating phase (module 5)
+    | { kind: 'rating.started'; submissionId: string; iteration: number }
+    | {
+        kind: 'rating.cellComputed';
+        submissionId: string;
+        ref: string;
+        label: string;
+        value: number;
+        format: 'currency' | 'percent' | 'multiplier';
+        op?: '×' | '+' | '−' | '';
+        subtotalAfter: number | null;
+        formula: string;
+        cellInputs: Array<{ label: string; path: string; value: unknown }>;
+      }
+    | {
+        kind: 'rating.completed';
+        submissionId: string;
+        premium: number;
+        sha: string;
+        version: string;
+        tier: string;
+        iteration: number;
+      }
+    | { kind: 'rating.rerun'; submissionId: string; nextIteration: number }
+
+    // Slip phase
+    | {
+        kind: 'slip.generated';
+        submissionId: string;
+        slipRef: string;
+        premium: number;
+        sha: string;
+      }
+    | {
+        kind: 'slip.fieldEdited';
+        submissionId: string;
+        fieldKey: string;
+        previousValue: string;
+        nextValue: string;
+        editedBy: string;
+      }
+    | { kind: 'slip.regenerated'; submissionId: string; preservedEdits: number }
+
+    // Email + send
+    | { kind: 'email.drafted'; submissionId: string; subject: string; body: string; recipient: string }
+    | {
+        kind: 'email.edited';
+        submissionId: string;
+        field: 'subject' | 'body' | 'cc';
+        nextValue: string;
+        editedBy: string;
+      }
+    | {
+        kind: 'quote.sent';
+        submissionId: string;
+        slipRef: string;
+        recipient: string;
+        subject: string;
+        body: string;
+        sentBy: string;
+      }
+    | { kind: 'quote.recalled'; submissionId: string; recalledBy: string }
+    | { kind: 'quote.markedStale'; submissionId: string; reason: string }
     | { kind: 'quote.issued'; submissionId: string; quoteRef: string }
     | {
         kind: 'recommendation.generated';

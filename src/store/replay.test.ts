@@ -523,6 +523,170 @@ describe('replay', () => {
     expect(r.decline?.notifyBroker).toBe(true);
   });
 
+  it('reconstructs rating + slip + quote-sent state from the log', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T09:30:00Z',
+        actor: { kind: 'system' },
+        kind: 'rating.started',
+        submissionId: SUB_ID,
+        iteration: 1,
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:30:01Z',
+        actor: { kind: 'system' },
+        kind: 'rating.cellComputed',
+        submissionId: SUB_ID,
+        ref: 'B14',
+        label: '× Turnover',
+        op: '×',
+        value: 33_222,
+        format: 'currency',
+        subtotalAfter: 33_222,
+        formula: 'Turnover × base rate',
+        cellInputs: [
+          { label: 'turnover', path: 'insured.turnover', value: 7_910_000 },
+        ],
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:30:02Z',
+        actor: { kind: 'system' },
+        kind: 'rating.completed',
+        submissionId: SUB_ID,
+        premium: 38_265,
+        sha: 'sha-7f2a',
+        version: 'v3.2',
+        tier: 'Tier-2',
+        iteration: 1,
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:30:03Z',
+        actor: { kind: 'system' },
+        kind: 'slip.generated',
+        submissionId: SUB_ID,
+        slipRef: 'POL-29481-Q1',
+        premium: 38_265,
+        sha: 'sha-7f2a',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:30:04Z',
+        actor: { kind: 'system', modelVersion: 'sonnet-4-7' },
+        kind: 'email.drafted',
+        submissionId: SUB_ID,
+        subject: 'Quote for Greenline Recycling Ltd — POL-29481-Q1',
+        body: 'Hi Sarah,\n\nPleased to attach our quote…',
+        recipient: 's.whitfield@surestep.co.uk',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:32:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'slip.fieldEdited',
+        submissionId: SUB_ID,
+        fieldKey: 'aggregate',
+        previousValue: '£10,000,000',
+        nextValue: '£12,500,000',
+        editedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:33:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'quote.sent',
+        submissionId: SUB_ID,
+        slipRef: 'POL-29481-Q1',
+        recipient: 's.whitfield@surestep.co.uk',
+        subject: 'Quote for Greenline Recycling Ltd — POL-29481-Q1',
+        body: 'Hi Sarah, ...',
+        sentBy: 'nm',
+      },
+    ];
+    const r = replay(events);
+    expect(r.rating.phase).toBe('settled');
+    expect(r.rating.output?.premium).toBe(38_265);
+    expect(r.rating.cells).toHaveLength(1);
+    expect(r.quote.phase).toBe('sent');
+    expect(r.quote.slipRef).toBe('POL-29481-Q1');
+    expect(r.quote.slipPremium).toBe(38_265);
+    expect(r.quote.slipEdits.aggregate?.value).toBe('£12,500,000');
+    expect(r.quote.email?.subject).toContain('POL-29481-Q1');
+    expect(r.quote.sentBy).toBe('nm');
+    expect(r.submissionState).toBe('quote-sent');
+  });
+
+  it('rating.rerun resets phase and tracks the new iteration', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T09:30:00Z',
+        actor: { kind: 'system' },
+        kind: 'rating.started',
+        submissionId: SUB_ID,
+        iteration: 1,
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:30:02Z',
+        actor: { kind: 'system' },
+        kind: 'rating.completed',
+        submissionId: SUB_ID,
+        premium: 38_265,
+        sha: 'sha-7f2a',
+        version: 'v3.2',
+        tier: 'Tier-2',
+        iteration: 1,
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:40:00Z',
+        actor: { kind: 'system' },
+        kind: 'rating.rerun',
+        submissionId: SUB_ID,
+        nextIteration: 2,
+      },
+    ];
+    const r = replay(events);
+    expect(r.rating.phase).toBe('pending');
+    expect(r.rating.iteration).toBe(2);
+    expect(r.rating.output).toBeNull();
+  });
+
+  it('quote.markedStale fires after a sent quote', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T09:33:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'quote.sent',
+        submissionId: SUB_ID,
+        slipRef: 'POL-29481-Q1',
+        recipient: 's.whitfield@surestep.co.uk',
+        subject: 'Quote',
+        body: '...',
+        sentBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T10:00:00Z',
+        actor: { kind: 'system' },
+        kind: 'quote.markedStale',
+        submissionId: SUB_ID,
+        reason: 'upstream rating change after send',
+      },
+    ];
+    const r = replay(events);
+    expect(r.quote.phase).toBe('sent');
+    expect(r.quote.staleSinceSent?.reason).toContain('upstream');
+  });
+
   it('artifact.computed clears staleSince', () => {
     const events: AuditEvent[] = [
       {
