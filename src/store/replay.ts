@@ -289,6 +289,86 @@ export function freshRecommendation(): RecommendationReplay {
   };
 }
 
+// ---------- bind ceremony + post-bind state (module 8) ----------
+
+import type {
+  BindCeremonyPhase,
+  HashId,
+  HashRecord,
+  HashStatus,
+  PostBindReplay,
+  SubjectivityRecord,
+} from '@/lib/bind/types';
+
+export type BindReplay = {
+  phase: BindCeremonyPhase;
+  hashes: HashRecord[];
+  startedAt: string | null;
+  committedAt: string | null;
+  policyRef: string | null;
+  signedBy: string | null;
+  heldReason: string | null;
+};
+
+export type { PostBindReplay, ScheduleReplay, SubjectivityRecord } from '@/lib/bind/types';
+
+export function freshBind(): BindReplay {
+  return {
+    phase: 'idle',
+    hashes: [],
+    startedAt: null,
+    committedAt: null,
+    policyRef: null,
+    signedBy: null,
+    heldReason: null,
+  };
+}
+
+export function freshPostBind(): PostBindReplay {
+  return {
+    schedule: {
+      generated: false,
+      generatedAt: null,
+      recipient: null,
+      coveringNote: null,
+      sentAt: null,
+      sentBy: null,
+    },
+    subjectivities: [],
+  };
+}
+
+const HASH_ORDER: HashId[] = ['premium', 'subjectivities', 'sanctions', 'capacity'];
+
+function ensureHash(bind: BindReplay, id: HashId): HashRecord {
+  let h = bind.hashes.find((x) => x.id === id);
+  if (!h) {
+    h = {
+      id,
+      status: 'pending',
+      artefactSha: null,
+      expectedSha: null,
+      confirmedAt: null,
+      confirmedBy: null,
+      overrideReason: null,
+    };
+    bind.hashes.push(h);
+    bind.hashes.sort(
+      (a, b) => HASH_ORDER.indexOf(a.id) - HASH_ORDER.indexOf(b.id),
+    );
+  }
+  return h;
+}
+
+function setHashStatus(
+  bind: BindReplay,
+  id: HashId,
+  patch: Partial<HashRecord> & { status: HashStatus },
+) {
+  const h = ensureHash(bind, id);
+  Object.assign(h, patch);
+}
+
 // ---------- submission lifecycle state ----------
 
 export type SubmissionLifecycleState =
@@ -298,7 +378,8 @@ export type SubmissionLifecycleState =
   | 'declined'
   | 'quote-sent'
   | 'bind-pending'
-  | 'ntu-pending';
+  | 'ntu-pending'
+  | 'bound';
 
 export type ReferralRecord = {
   reviewer: string;
@@ -330,6 +411,8 @@ export type ReplayResult = {
   submissionState: SubmissionLifecycleState;
   referral: ReferralRecord | null;
   decline: DeclineRecord | null;
+  bind: BindReplay;
+  postBind: PostBindReplay;
 };
 
 export function freshArtifacts(): Record<ArtifactKey, ArtifactState> {
@@ -385,6 +468,8 @@ export function replay(events: AuditEvent[]): ReplayResult {
   let submissionState: SubmissionLifecycleState = 'active';
   let referral: ReferralRecord | null = null;
   let decline: DeclineRecord | null = null;
+  const bind = freshBind();
+  const postBind = freshPostBind();
 
   for (const e of events) {
     switch (e.kind) {
@@ -918,6 +1003,101 @@ export function replay(events: AuditEvent[]): ReplayResult {
         submissionState = 'ntu-pending';
         break;
 
+      // ---------- bind ceremony (module 8) ----------
+      case 'bind.ceremonyStarted':
+        bind.phase = 'in-progress';
+        bind.startedAt = e.at;
+        submissionState = 'bind-pending';
+        break;
+
+      case 'bind.hashConfirmed':
+        setHashStatus(bind, e.hashId, {
+          status: 'confirmed',
+          artefactSha: e.artefactSha,
+          expectedSha: e.artefactSha,
+          confirmedAt: e.at,
+          confirmedBy: e.confirmedBy,
+        });
+        break;
+
+      case 'bind.hashFailed':
+        setHashStatus(bind, e.hashId, {
+          status: 'failed',
+          artefactSha: e.currentSha,
+          expectedSha: e.expectedSha,
+        });
+        break;
+
+      case 'bind.hashOverridden':
+        setHashStatus(bind, e.hashId, {
+          status: 'overridden',
+          artefactSha: e.currentSha,
+          expectedSha: e.expectedSha,
+          confirmedAt: e.at,
+          confirmedBy: e.overriddenBy,
+          overrideReason: e.reason,
+        });
+        break;
+
+      case 'bind.committed':
+        bind.phase = 'committed';
+        bind.committedAt = e.at;
+        bind.policyRef = e.policyRef;
+        bind.signedBy = e.signedBy;
+        submissionState = 'bound';
+        break;
+
+      case 'bind.held':
+        bind.phase = 'held';
+        bind.heldReason = e.reason;
+        break;
+
+      case 'schedule.generated':
+        postBind.schedule.generated = true;
+        postBind.schedule.generatedAt = e.at;
+        postBind.schedule.recipient = e.recipient;
+        postBind.schedule.coveringNote = e.coveringNote;
+        break;
+
+      case 'schedule.sent':
+        postBind.schedule.sentAt = e.at;
+        postBind.schedule.sentBy = e.sentBy;
+        // Carry through covering note edits made before send.
+        postBind.schedule.coveringNote = e.coveringNote;
+        postBind.schedule.recipient = e.recipient;
+        break;
+
+      case 'subjectivity.created': {
+        const idx = postBind.subjectivities.findIndex((s) => s.id === e.subjectivityId);
+        const next: SubjectivityRecord = {
+          id: e.subjectivityId,
+          subjectivityType: e.subjectivityType,
+          description: e.description,
+          affectedSites: e.affectedSites,
+          criticalDate: e.criticalDate,
+          status: 'active',
+          actionRequired: e.actionRequired,
+          autoMonitor: e.autoMonitor,
+          createdAt: e.at,
+        };
+        if (idx >= 0) postBind.subjectivities[idx] = next;
+        else postBind.subjectivities.push(next);
+        break;
+      }
+
+      case 'subjectivity.tracked': {
+        const sub = postBind.subjectivities.find((s) => s.id === e.subjectivityId);
+        if (sub) sub.status = e.status;
+        break;
+      }
+
+      // Audit-view events do not mutate materialised state — they're
+      // recorded for compliance only.
+      case 'audit.viewed':
+      case 'audit.exported':
+      case 'audit.stateReplayed':
+        break;
+
       // Pass-through:
       case 'submission.received':
       case 'gap.flagged':
@@ -942,6 +1122,8 @@ export function replay(events: AuditEvent[]): ReplayResult {
     submissionState,
     referral,
     decline,
+    bind,
+    postBind,
   };
 }
 

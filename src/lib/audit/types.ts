@@ -400,6 +400,95 @@ export type AuditEvent = AuditEventBase &
         computedAt: ISO8601;
       }
     | { kind: 'artifact.stale'; submissionId: string; artifact: string }
+
+    // Bind ceremony (module 8)
+    | {
+        kind: 'bind.ceremonyStarted';
+        submissionId: string;
+        startedBy: string;
+      }
+    | {
+        kind: 'bind.hashConfirmed';
+        submissionId: string;
+        hashId: 'premium' | 'subjectivities' | 'sanctions' | 'capacity';
+        artefactSha: string;
+        confirmedBy: string;
+      }
+    | {
+        kind: 'bind.hashFailed';
+        submissionId: string;
+        hashId: 'premium' | 'subjectivities' | 'sanctions' | 'capacity';
+        expectedSha: string;
+        currentSha: string;
+        reason: string;
+      }
+    | {
+        kind: 'bind.hashOverridden';
+        submissionId: string;
+        hashId: 'premium' | 'subjectivities' | 'sanctions' | 'capacity';
+        expectedSha: string;
+        currentSha: string;
+        reason: string;
+        overriddenBy: string;
+      }
+    | {
+        kind: 'bind.committed';
+        submissionId: string;
+        policyRef: string;
+        premium: number;
+        signedBy: string;
+        hashes: Array<{ id: string; sha: string; confirmedAt: ISO8601 }>;
+      }
+    | { kind: 'bind.held'; submissionId: string; reason: string; heldBy: string }
+    | {
+        kind: 'schedule.generated';
+        submissionId: string;
+        policyRef: string;
+        coveringNote: string;
+        recipient: string;
+      }
+    | {
+        kind: 'schedule.sent';
+        submissionId: string;
+        policyRef: string;
+        recipient: string;
+        coveringNote: string;
+        sentBy: string;
+      }
+    | {
+        kind: 'subjectivity.created';
+        submissionId: string;
+        subjectivityId: string;
+        subjectivityType: 'permit-warranty' | 'maintenance-warranty';
+        description: string;
+        affectedSites: string[];
+        criticalDate: string | null;
+        actionRequired: string | null;
+        autoMonitor: boolean;
+      }
+    | {
+        kind: 'subjectivity.tracked';
+        submissionId: string;
+        subjectivityId: string;
+        status: 'active' | 'satisfied' | 'breached';
+      }
+    | {
+        kind: 'audit.viewed';
+        submissionId: string;
+        viewedBy: string;
+      }
+    | {
+        kind: 'audit.exported';
+        submissionId: string;
+        exportedBy: string;
+        eventCount: number;
+      }
+    | {
+        kind: 'audit.stateReplayed';
+        submissionId: string;
+        replayedBy: string;
+        targetAt: ISO8601;
+      }
   );
 
 export type AuditEventKind = AuditEvent['kind'];

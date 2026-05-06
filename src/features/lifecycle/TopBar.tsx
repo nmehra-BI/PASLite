@@ -1,6 +1,7 @@
 import { Sparkle } from 'lucide-react';
 import { useRanBerri } from '@/store';
 import { Pill } from '@/components';
+import { AuditLogTrigger } from '@/features/audit';
 
 /**
  * The workstation top bar. Thin, dense, no marketing copy. Reads
@@ -70,6 +71,7 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-3">
+        <AuditLogTrigger />
         <Pill tone="warn" mono>
           STAGING
         </Pill>

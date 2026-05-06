@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { useIntake } from './intakeStore';
+import { useRanBerri } from '@/store';
 import { SourceDocPreview } from './SourceDocPreview';
 import { ExtractedView } from './ExtractedView';
 import { Inspector } from './Inspector';
@@ -8,6 +9,7 @@ import { TriageSection } from '@/features/triage';
 import { RatingSection } from '@/features/rating';
 import { QuoteSection } from '@/features/quote';
 import { RecommendationSection } from '@/features/recommendation';
+import { BindCeremony } from '@/features/bind';
 
 /**
  * The two-column composition that frames the cinematic extraction and,
@@ -22,6 +24,7 @@ import { RecommendationSection } from '@/features/recommendation';
  */
 export function ExtractionSequence() {
   const phase = useIntake((s) => s.phase);
+  const bindPhase = useRanBerri((s) => s.bind.phase);
   const showSplit =
     phase === 'receiving' ||
     phase === 'reading' ||
@@ -29,6 +32,10 @@ export function ExtractionSequence() {
     phase === 'complete';
 
   if (!showSplit) return null;
+  // The bind ceremony fires inside the right column. The extracted
+  // view's prior sections collapse into the BindCeremony container
+  // so the canvas stays in one body and the seam plays over the
+  // whole canvas, not a modal.
 
   return (
     <div
@@ -77,6 +84,7 @@ export function ExtractionSequence() {
             <RatingSection />
             <QuoteSection />
             <RecommendationSection />
+            {bindPhase === 'in-progress' && <BindCeremony />}
           </ExtractedView>
         )}
         <Inspector />

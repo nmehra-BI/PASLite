@@ -1,5 +1,7 @@
 import { useRanBerri } from '@/store';
 import type { LifecycleMilestone } from '@/lib/fixtures';
+import { daysUntilCritical } from '@/lib/fixtures/subjectivities';
+import type { SubjectivityRecord } from '@/lib/bind/types';
 
 type MilestoneSpec = {
   key: LifecycleMilestone;
@@ -64,10 +66,28 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
   const cursor = useRanBerri((s) => s.lifecycle.cursor);
   const now = useRanBerri((s) => s.lifecycle.now);
   const scrub = useRanBerri((s) => s.scrubLifecycle);
+  const bindPhase = useRanBerri((s) => s.bind.phase);
+  const subjectivities = useRanBerri((s) => s.postBind.subjectivities);
 
   const cursorSpec = MILESTONES.find((m) => m.key === cursor) ?? MILESTONES[0]!;
   const nowSpec = MILESTONES.find((m) => m.key === now) ?? MILESTONES[0]!;
   const playheadAtNow = cursor === now;
+  const isBound = bindPhase === 'committed';
+
+  // Project active subjectivities with critical dates onto the ribbon.
+  // A 365-day in-force window maps to the seam→cancel range
+  // (0.18 → 0.74). For the demo, the Greenline Leeds permit at ~53
+  // days lands ~0.26 into that span.
+  const subjectivityTicks = subjectivities
+    .filter((s): s is SubjectivityRecord => s.criticalDate !== null && s.status === 'active')
+    .map((s) => {
+      const days = daysUntilCritical(s.criticalDate);
+      if (days === null) return null;
+      const fraction = Math.min(1, Math.max(0, days / 365));
+      const at = 0.18 + fraction * (0.74 - 0.18);
+      return { id: s.id, at, label: s.description };
+    })
+    .filter((t): t is { id: string; at: number; label: string } => t !== null);
 
   const ROW_A = compact ? 18 : 22;
   const ROW_B = compact ? 22 : 26;
@@ -159,20 +179,61 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
         />
 
         {/* seam vertical hairlines spanning rows B–E */}
-        {SEAMS.map((seam) => (
-          <div
-            key={`${seam.label}-line`}
+        {SEAMS.map((seam, i) => {
+          const isBecomePolicySeam = i === 0;
+          const isFilled = isBecomePolicySeam && isBound;
+          return (
+            <div
+              key={`${seam.label}-line`}
+              className="absolute"
+              style={{
+                left: `${seam.at * 100}%`,
+                top: yB,
+                height: ROW_B + ROW_C + ROW_D + ROW_E,
+                width: isFilled ? 1.5 : 0.5,
+                background: isFilled
+                  ? 'var(--color-accent)'
+                  : 'var(--color-rule-mid)',
+                transform: 'translateX(-50%)',
+                transition: 'background 320ms cubic-bezier(0.4,0,0.2,1), width 320ms',
+              }}
+              aria-hidden
+            />
+          );
+        })}
+
+        {/* subjectivity ticks — small gilt vertical marks on row B */}
+        {subjectivityTicks.map((tick) => (
+          <button
+            key={`tick-${tick.id}`}
+            type="button"
+            onClick={() => useRanBerri.getState().setInspectingSubjectivity(tick.id)}
+            title={tick.label}
+            aria-label={`Subjectivity ${tick.id}`}
             className="absolute"
             style={{
-              left: `${seam.at * 100}%`,
-              top: yB,
-              height: ROW_B + ROW_C + ROW_D + ROW_E,
-              width: 0.5,
-              background: 'var(--color-rule-mid)',
+              left: `${tick.at * 100}%`,
+              top: trackY - 6,
+              width: 12,
+              height: 12,
               transform: 'translateX(-50%)',
+              padding: 0,
+              background: 'transparent',
+              border: 0,
+              cursor: 'pointer',
             }}
-            aria-hidden
-          />
+          >
+            <span
+              style={{
+                display: 'block',
+                width: 2,
+                height: 12,
+                background: 'var(--color-accent)',
+                margin: '0 auto',
+                opacity: 0.85,
+              }}
+            />
+          </button>
         ))}
 
         {/* row B: milestone dots */}

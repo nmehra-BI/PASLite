@@ -2,19 +2,19 @@ import { motion } from 'framer-motion';
 import { useRanBerri } from '@/store';
 
 /**
- * Banner shown when the submission has been advanced to bind-pending
- * (module 8 hook) or ntu-pending (module 7 hook). Both are placeholder
- * states — the actual ceremonies live in their respective modules.
+ * Banner shown when the submission has been advanced to ntu-pending
+ * (module 7). For bind, the bind ceremony surface (module 8) owns
+ * the canvas — no banner needed.
  */
 export function PendingActionBanner() {
   const submissionState = useRanBerri((s) => s.submissionState);
   const action = useRanBerri((s) => s.recommendation.action);
 
-  if (submissionState !== 'bind-pending' && submissionState !== 'ntu-pending') {
+  if (submissionState !== 'ntu-pending') {
     return null;
   }
 
-  const isBind = submissionState === 'bind-pending';
+  const isBind = false;
 
   return (
     <motion.div

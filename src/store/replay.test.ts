@@ -790,4 +790,175 @@ describe('replay', () => {
     expect(r.artifacts.rating.computedAt).toBe('2026-05-09T12:00:00Z');
     expect(r.artifacts.rating.staleSince).toBeNull();
   });
+
+  it('reconstructs the bind ceremony lifecycle from the event log', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T14:08:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'bind.ceremonyStarted',
+        submissionId: SUB_ID,
+        startedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:13:42Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'bind.hashConfirmed',
+        submissionId: SUB_ID,
+        hashId: 'premium',
+        artefactSha: 'sha-7f2a',
+        confirmedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:13:51Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'bind.hashConfirmed',
+        submissionId: SUB_ID,
+        hashId: 'subjectivities',
+        artefactSha: 'sha-2b81',
+        confirmedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:14:02Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'bind.hashConfirmed',
+        submissionId: SUB_ID,
+        hashId: 'sanctions',
+        artefactSha: 'sha-c0d3',
+        confirmedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:14:09Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'bind.hashConfirmed',
+        submissionId: SUB_ID,
+        hashId: 'capacity',
+        artefactSha: 'sha-cap1',
+        confirmedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:14:14Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'bind.committed',
+        submissionId: SUB_ID,
+        policyRef: 'POL-29481',
+        premium: 38_265,
+        signedBy: 'nm',
+        hashes: [],
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:14:14Z',
+        actor: { kind: 'system' },
+        kind: 'schedule.generated',
+        submissionId: SUB_ID,
+        policyRef: 'POL-29481',
+        coveringNote: 'Hi Sarah, ...',
+        recipient: 's.whitfield@surestep.co.uk',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:14:14Z',
+        actor: { kind: 'system' },
+        kind: 'subjectivity.created',
+        submissionId: SUB_ID,
+        subjectivityId: 'SUBJ-001',
+        subjectivityType: 'permit-warranty',
+        description: 'EA permit must remain in force…',
+        affectedSites: ['Leeds (EAWML-99214)'],
+        criticalDate: '2026-07-01T00:00:00Z',
+        actionRequired: 'Request renewed permit evidence',
+        autoMonitor: true,
+      },
+    ];
+    const r = replay(events);
+    expect(r.submissionState).toBe('bound');
+    expect(r.bind.phase).toBe('committed');
+    expect(r.bind.policyRef).toBe('POL-29481');
+    expect(r.bind.hashes).toHaveLength(4);
+    expect(r.bind.hashes.every((h) => h.status === 'confirmed')).toBe(true);
+    expect(r.postBind.schedule.generated).toBe(true);
+    expect(r.postBind.subjectivities).toHaveLength(1);
+    expect(r.postBind.subjectivities[0]!.id).toBe('SUBJ-001');
+    expect(r.postBind.subjectivities[0]!.status).toBe('active');
+  });
+
+  it('bind.hashOverridden produces an overridden hash with reason carried through', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T14:08:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'bind.ceremonyStarted',
+        submissionId: SUB_ID,
+        startedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:13:42Z',
+        actor: { kind: 'system' },
+        kind: 'bind.hashFailed',
+        submissionId: SUB_ID,
+        hashId: 'premium',
+        expectedSha: 'sha-7f2a',
+        currentSha: 'sha-8c1f',
+        reason: 'artefact drift since seal',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:14:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'bind.hashOverridden',
+        submissionId: SUB_ID,
+        hashId: 'premium',
+        expectedSha: 'sha-7f2a',
+        currentSha: 'sha-8c1f',
+        reason: 'broker accepted revised premium in writing',
+        overriddenBy: 'nm',
+      },
+    ];
+    const r = replay(events);
+    const h1 = r.bind.hashes.find((h) => h.id === 'premium')!;
+    expect(h1.status).toBe('overridden');
+    expect(h1.overrideReason).toContain('broker accepted');
+  });
+
+  it('schedule.sent updates sentAt and carries through covering note edits', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T14:14:14Z',
+        actor: { kind: 'system' },
+        kind: 'schedule.generated',
+        submissionId: SUB_ID,
+        policyRef: 'POL-29481',
+        coveringNote: 'auto-drafted note',
+        recipient: 's.whitfield@surestep.co.uk',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T14:18:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'schedule.sent',
+        submissionId: SUB_ID,
+        policyRef: 'POL-29481',
+        recipient: 's.whitfield@surestep.co.uk',
+        coveringNote: 'edited note',
+        sentBy: 'nm',
+      },
+    ];
+    const r = replay(events);
+    expect(r.postBind.schedule.sentAt).toBe('2026-05-09T14:18:00Z');
+    expect(r.postBind.schedule.sentBy).toBe('nm');
+    expect(r.postBind.schedule.coveringNote).toBe('edited note');
+  });
 });

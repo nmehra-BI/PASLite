@@ -15,23 +15,29 @@ import { getAtPath, setAtPath, type FieldPath } from '@/lib/paths';
 import {
   applyExtraction,
   freshArtifacts,
+  freshBind,
   freshEnrichment,
+  freshPostBind,
   freshQuote,
   freshRating,
   freshRecommendation,
   freshTriage,
   replay,
   type ArtifactState,
+  type BindReplay,
   type DeclineRecord,
   type EnrichmentReplayState,
+  type PostBindReplay,
   type QuoteReplay,
   type RatingReplay,
   type RecommendationReplay,
   type ReferralRecord,
   type SourceStatus,
   type SubmissionLifecycleState,
+  type SubjectivityRecord,
   type TriageReplayState,
 } from './replay';
+import type { HashId } from '@/lib/bind/types';
 
 /**
  * The single source of truth.
@@ -72,12 +78,19 @@ export type RanBerriState = {
   submissionState: SubmissionLifecycleState;
   referral: ReferralRecord | null;
   decline: DeclineRecord | null;
+  bind: BindReplay;
+  postBind: PostBindReplay;
   lifecycle: {
     cursor: LifecycleMilestone;
     now: LifecycleMilestone;
   };
   ui: {
     canvasMode: 'closed' | 'compact' | 'expanded';
+    auditLogOpen: boolean;
+    inspectingSubjectivityId: string | null;
+    showCertificate: boolean;
+    /** True while the seam animation is mid-flight. */
+    seamFiring: boolean;
   };
 
   // Actions
@@ -211,6 +224,16 @@ export type RanBerriState = {
 
   scrubLifecycle: (milestone: LifecycleMilestone) => void;
   setCanvasMode: (mode: 'closed' | 'compact' | 'expanded') => void;
+
+  // Module 8 — bind ceremony orchestration. These actions mirror
+  // `src/lib/bind/runBindCeremony.ts` so the ceremony is reachable
+  // both from React (via the store) and from tests / future
+  // cinematics (via the lib helpers). Both paths emit identical
+  // audit events.
+  setSeamFiring: (firing: boolean) => void;
+  setAuditLogOpen: (open: boolean) => void;
+  setInspectingSubjectivity: (id: string | null) => void;
+  setShowCertificate: (show: boolean) => void;
   reset: () => void;
 };
 
@@ -264,8 +287,16 @@ export const useRanBerri = create<RanBerriState>()(
       submissionState: 'active',
       referral: null,
       decline: null,
+      bind: freshBind(),
+      postBind: freshPostBind(),
       lifecycle: { cursor: 'quote', now: 'quote' },
-      ui: { canvasMode: 'compact' },
+      ui: {
+        canvasMode: 'compact',
+        auditLogOpen: false,
+        inspectingSubjectivityId: null,
+        showCertificate: false,
+        seamFiring: false,
+      },
 
       appendAuditEvent: (event) =>
         set((s) => {
@@ -683,27 +714,18 @@ export const useRanBerri = create<RanBerriState>()(
           actedBy: input.actedBy,
         });
 
-        // 2. Advance the submission state. Bind and NTU are placeholder
-        //    state transitions for modules 7/8; refer reuses module 4's
-        //    submission.referred path via the existing referral modal.
+        // 2. Advance the submission state. Bind starts the four-hash
+        //    ceremony; NTU goes to module 7's loss-capture; refer
+        //    reuses module 4's submission.referred path.
         if (input.action === 'bind') {
+          // Module 8: start the bind ceremony. The hash rows render in
+          // place of the recommendation; commit drives the seam.
           get().appendAuditEvent({
-            actor: { kind: 'system' },
-            kind: 'submission.advancedToBindPending',
+            actor: { kind: 'underwriter', id: input.actedBy },
+            kind: 'bind.ceremonyStarted',
             submissionId,
-            actedBy: input.actedBy,
+            startedBy: input.actedBy,
           });
-          set((s) => {
-            s.lifecycle.now = 'bind';
-            s.lifecycle.cursor = 'bind';
-          });
-          if (typeof console !== 'undefined') {
-            // eslint-disable-next-line no-console
-            console.info(
-              '[module 8 placeholder] Bind ceremony will run here. State advanced to bind-pending.',
-              { submissionId },
-            );
-          }
         } else if (input.action === 'ntu') {
           get().appendAuditEvent({
             actor: { kind: 'system' },
@@ -734,6 +756,26 @@ export const useRanBerri = create<RanBerriState>()(
           s.ui.canvasMode = mode;
         }),
 
+      setSeamFiring: (firing) =>
+        set((s) => {
+          s.ui.seamFiring = firing;
+        }),
+
+      setAuditLogOpen: (open) =>
+        set((s) => {
+          s.ui.auditLogOpen = open;
+        }),
+
+      setInspectingSubjectivity: (id) =>
+        set((s) => {
+          s.ui.inspectingSubjectivityId = id;
+        }),
+
+      setShowCertificate: (show) =>
+        set((s) => {
+          s.ui.showCertificate = show;
+        }),
+
       reset: () =>
         set((s) => {
           s.submission = null;
@@ -747,8 +789,16 @@ export const useRanBerri = create<RanBerriState>()(
           s.submissionState = 'active';
           s.referral = null;
           s.decline = null;
+          s.bind = freshBind();
+          s.postBind = freshPostBind();
           s.lifecycle = { cursor: 'quote', now: 'quote' };
-          s.ui = { canvasMode: 'compact' };
+          s.ui = {
+            canvasMode: 'compact',
+            auditLogOpen: false,
+            inspectingSubjectivityId: null,
+            showCertificate: false,
+            seamFiring: false,
+          };
         }),
     })),
     {
@@ -776,6 +826,8 @@ export const useRanBerri = create<RanBerriState>()(
           merged.submissionState = result.submissionState;
           merged.referral = result.referral;
           merged.decline = result.decline;
+          merged.bind = result.bind;
+          merged.postBind = result.postBind;
         }
         return merged;
       },
@@ -1202,6 +1254,106 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
       s.submissionState = 'ntu-pending';
       break;
 
+    // ---------- bind ceremony (module 8) ----------
+
+    case 'bind.ceremonyStarted':
+      s.bind.phase = 'in-progress';
+      s.bind.startedAt = e.at;
+      s.submissionState = 'bind-pending';
+      break;
+
+    case 'bind.hashConfirmed':
+      writeHash(s, e.hashId, {
+        status: 'confirmed',
+        artefactSha: e.artefactSha,
+        expectedSha: e.artefactSha,
+        confirmedAt: e.at,
+        confirmedBy: e.confirmedBy,
+      });
+      break;
+
+    case 'bind.hashFailed':
+      writeHash(s, e.hashId, {
+        status: 'failed',
+        artefactSha: e.currentSha,
+        expectedSha: e.expectedSha,
+      });
+      break;
+
+    case 'bind.hashOverridden':
+      writeHash(s, e.hashId, {
+        status: 'overridden',
+        artefactSha: e.currentSha,
+        expectedSha: e.expectedSha,
+        confirmedAt: e.at,
+        confirmedBy: e.overriddenBy,
+        overrideReason: e.reason,
+      });
+      break;
+
+    case 'bind.committed':
+      s.bind.phase = 'committed';
+      s.bind.committedAt = e.at;
+      s.bind.policyRef = e.policyRef;
+      s.bind.signedBy = e.signedBy;
+      s.submissionState = 'bound';
+      // Advance the lifecycle 'now' to the Bind milestone — this is
+      // what fills the seam in the ribbon and shifts the playhead.
+      s.lifecycle.now = 'bind';
+      s.lifecycle.cursor = 'bind';
+      break;
+
+    case 'bind.held':
+      s.bind.phase = 'held';
+      s.bind.heldReason = e.reason;
+      break;
+
+    case 'schedule.generated':
+      s.postBind.schedule.generated = true;
+      s.postBind.schedule.generatedAt = e.at;
+      s.postBind.schedule.recipient = e.recipient;
+      s.postBind.schedule.coveringNote = e.coveringNote;
+      break;
+
+    case 'schedule.sent':
+      s.postBind.schedule.sentAt = e.at;
+      s.postBind.schedule.sentBy = e.sentBy;
+      s.postBind.schedule.coveringNote = e.coveringNote;
+      s.postBind.schedule.recipient = e.recipient;
+      break;
+
+    case 'subjectivity.created': {
+      const idx = s.postBind.subjectivities.findIndex(
+        (x) => x.id === e.subjectivityId,
+      );
+      const next: SubjectivityRecord = {
+        id: e.subjectivityId,
+        subjectivityType: e.subjectivityType,
+        description: e.description,
+        affectedSites: e.affectedSites,
+        criticalDate: e.criticalDate,
+        status: 'active',
+        actionRequired: e.actionRequired,
+        autoMonitor: e.autoMonitor,
+        createdAt: e.at,
+      };
+      if (idx >= 0) s.postBind.subjectivities[idx] = next;
+      else s.postBind.subjectivities.push(next);
+      break;
+    }
+
+    case 'subjectivity.tracked': {
+      const sub = s.postBind.subjectivities.find((x) => x.id === e.subjectivityId);
+      if (sub) sub.status = e.status;
+      break;
+    }
+
+    case 'audit.viewed':
+    case 'audit.exported':
+    case 'audit.stateReplayed':
+      // Compliance-only events; no state mutation.
+      break;
+
     case 'slip.fieldEdited':
       s.quote.slipEdits[e.fieldKey] = {
         value: e.nextValue,
@@ -1287,4 +1439,36 @@ function computeVerdictFromState(
 
 function isKnownArtifact(s: string): s is ArtifactKey {
   return (ALL_ARTIFACTS as readonly string[]).includes(s);
+}
+
+const HASH_ORDER: HashId[] = ['premium', 'subjectivities', 'sanctions', 'capacity'];
+
+/**
+ * Mirror of replay.ts setHashStatus, operating on the immer draft.
+ * Ensures the per-event reducer keeps the bind slice consistent.
+ */
+function writeHash(
+  s: RanBerriState,
+  id: HashId,
+  patch: Partial<BindReplay['hashes'][number]> & {
+    status: BindReplay['hashes'][number]['status'];
+  },
+): void {
+  let h = s.bind.hashes.find((x) => x.id === id);
+  if (!h) {
+    h = {
+      id,
+      status: 'pending',
+      artefactSha: null,
+      expectedSha: null,
+      confirmedAt: null,
+      confirmedBy: null,
+      overrideReason: null,
+    };
+    s.bind.hashes.push(h);
+    s.bind.hashes.sort(
+      (a, b) => HASH_ORDER.indexOf(a.id) - HASH_ORDER.indexOf(b.id),
+    );
+  }
+  Object.assign(h, patch);
 }

@@ -62,6 +62,20 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'decision.recorded': 'Decision recorded',
   'artifact.computed': 'Artifact computed',
   'artifact.stale': 'Artifact marked stale',
+  // Module 8 — bind ceremony
+  'bind.ceremonyStarted': 'Bind ceremony started',
+  'bind.hashConfirmed': 'Hash confirmed',
+  'bind.hashFailed': 'Hash failed',
+  'bind.hashOverridden': 'Hash overridden',
+  'bind.committed': 'Bind committed',
+  'bind.held': 'Bind held for review',
+  'schedule.generated': 'Schedule generated',
+  'schedule.sent': 'Schedule sent to broker',
+  'subjectivity.created': 'Subjectivity created',
+  'subjectivity.tracked': 'Subjectivity tracked',
+  'audit.viewed': 'Audit log viewed',
+  'audit.exported': 'Audit log exported',
+  'audit.stateReplayed': 'State replayed',
 };
 
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {
@@ -95,17 +109,19 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'conflict.detected' ||
     kind === 'artifact.stale' ||
     kind === 'triage.verdictChanged' ||
-    kind === 'submission.referred'
+    kind === 'submission.referred' ||
+    kind === 'bind.held'
   )
     return 'var(--color-warn)';
   if (
     kind === 'field.corrected' ||
     kind === 'conflict.resolved' ||
     kind === 'gap.resolved' ||
-    kind === 'triage.checkOverridden'
+    kind === 'triage.checkOverridden' ||
+    kind === 'bind.hashOverridden'
   )
     return 'var(--color-accent)';
-  if (kind === 'submission.declined' || kind === 'quote.markedStale')
+  if (kind === 'submission.declined' || kind === 'quote.markedStale' || kind === 'bind.hashFailed')
     return 'var(--color-danger)';
   if (
     kind === 'extraction.completed' ||
@@ -122,7 +138,12 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'triage.passedToRating' ||
     kind === 'recommendation.completed' ||
     kind === 'recommendation.actedUpon' ||
-    kind === 'submission.advancedToBindPending'
+    kind === 'submission.advancedToBindPending' ||
+    kind === 'bind.hashConfirmed' ||
+    kind === 'bind.committed' ||
+    kind === 'schedule.generated' ||
+    kind === 'schedule.sent' ||
+    kind === 'subjectivity.created'
   )
     return 'var(--color-success)';
   return 'var(--color-ink)';

@@ -11,6 +11,9 @@ import { TerminalBanner } from '@/features/triage';
 import { QuoteSentBanner } from '@/features/quote';
 import { PendingActionBanner } from '@/features/recommendation';
 import { StalenessBanner } from '@/components';
+import { SeamAnimation } from '@/features/bind';
+import { PostBindCanvas } from '@/features/postbind';
+import { AuditLogInspector } from '@/features/audit';
 import { Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 
@@ -31,6 +34,7 @@ export function Cockpit() {
         flexDirection: 'column',
         background: 'var(--color-bg)',
         overflow: 'hidden',
+        position: 'relative',
       }}
     >
       <TopBar />
@@ -39,6 +43,8 @@ export function Cockpit() {
         <CanvasColumn />
         <DecisionTrail side="right" />
       </div>
+      <SeamAnimation />
+      <AuditLogInspector />
     </div>
   );
 }
@@ -219,6 +225,12 @@ function RibbonBand() {
 
 function CanvasBody() {
   const phase = useIntake((s) => s.phase);
+  const bindPhase = useRanBerri((s) => s.bind.phase);
+  // Once committed, the canvas's mental model shifts from decisioning
+  // to monitoring. The post-bind surface owns the rest of the lifecycle.
+  if (bindPhase === 'committed') {
+    return <PostBindCanvas />;
+  }
   if (phase === 'idle') {
     return (
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>

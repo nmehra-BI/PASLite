@@ -63,6 +63,12 @@ export function RecommendationSection() {
   const isCalculating = recommendation.phase === 'evaluating' || running;
   const isSettled = recommendation.phase === 'settled' && recommendation.primary !== null;
 
+  // Once the underwriter has acted, collapse the section to a single
+  // confirmation strip so the bind ceremony can claim the canvas.
+  if (recommendation.action) {
+    return <ActedSummary />;
+  }
+
   return (
     <section
       className="hairline-t"
@@ -149,6 +155,75 @@ export function RecommendationSection() {
       {deepDiveOpen && (
         <DeepDiveInspector onClose={() => setDeepDiveOpen(false)} />
       )}
+    </section>
+  );
+}
+
+function ActedSummary() {
+  const action = useRanBerri((s) => s.recommendation.action);
+  if (!action) return null;
+  const TIME_FMT = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const label =
+    action.kind === 'bind'
+      ? 'BIND'
+      : action.kind === 'refer'
+        ? 'REFER'
+        : 'NTU';
+  return (
+    <section
+      className="hairline-t"
+      style={{
+        marginTop: 28,
+        paddingTop: 14,
+        paddingBottom: 4,
+      }}
+    >
+      <div
+        className="flex items-baseline gap-3"
+        style={{
+          padding: '6px 10px',
+          borderRadius: 'var(--radius-button)',
+          background: 'var(--color-success-bg)',
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 9.5,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: 'var(--color-success)',
+          }}
+        >
+          ✓ recommendation acted on
+        </span>
+        <span
+          className="serif"
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: 'var(--color-success)',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          {label}
+        </span>
+        <span
+          className="serif"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 12,
+            color: 'var(--color-success)',
+          }}
+        >
+          · {TIME_FMT.format(new Date(action.actedAt))}
+        </span>
+      </div>
     </section>
   );
 }
