@@ -298,12 +298,30 @@ export const useRanBerri = create<RanBerriState>()(
 
         // 2. The field.corrected event is the actual mutation plus
         // dep-graph stale propagation. We invoke applyCorrection so
-        // the same closure logic + audit cascade fires.
+        // the same closure logic + audit cascade fires (rating /
+        // quote / recommendation will go stale; conflicts will too,
+        // and we restore it below).
         get().applyCorrection(input.fieldPath, {
           value: input.value,
           reason: `[conflict ${input.conflictId}] ${input.reason}`,
           correctedBy: input.resolvedBy,
           correctedAt: at,
+        });
+
+        // 3. The conflicts artifact is NOT actually stale at this
+        // point: the resolution we just emitted is the latest
+        // declaration of conflict state. The cascade fired
+        // artifact.stale for it because turnover is in
+        // conflicts.sources; we follow up with artifact.computed so
+        // the UI doesn't show "rerun enrichment" the moment the user
+        // settles a conflict.
+        get().appendAuditEvent({
+          actor: { kind: 'system' },
+          at,
+          kind: 'artifact.computed',
+          submissionId,
+          artifact: 'conflicts',
+          computedAt: at,
         });
       },
 
@@ -505,6 +523,7 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
         marginalia: e.marginalia,
         detectedAt: e.at,
         resolution: idx >= 0 ? s.enrichment.conflicts[idx]!.resolution : null,
+        dismissed: false,
       };
       if (idx >= 0) s.enrichment.conflicts[idx] = next;
       else s.enrichment.conflicts.push(next);
@@ -527,6 +546,16 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
       break;
     }
 
+    case 'conflict.dismissed': {
+      const idx = s.enrichment.conflicts.findIndex(
+        (c) => c.id === e.conflictId,
+      );
+      if (idx >= 0) {
+        s.enrichment.conflicts[idx]!.dismissed = true;
+      }
+      break;
+    }
+
     case 'gap.detected': {
       const idx = s.enrichment.gaps.findIndex((g) => g.id === e.gapId);
       const next = {
@@ -536,6 +565,7 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
         detectedAt: e.at,
         resolution: idx >= 0 ? s.enrichment.gaps[idx]!.resolution : null,
         requestSent: idx >= 0 ? s.enrichment.gaps[idx]!.requestSent : null,
+        dismissed: false,
       };
       if (idx >= 0) s.enrichment.gaps[idx] = next;
       else s.enrichment.gaps.push(next);
@@ -552,6 +582,14 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
           resolvedBy: e.resolvedBy,
           resolvedAt: e.at,
         };
+      }
+      break;
+    }
+
+    case 'gap.dismissed': {
+      const idx = s.enrichment.gaps.findIndex((g) => g.id === e.gapId);
+      if (idx >= 0) {
+        s.enrichment.gaps[idx]!.dismissed = true;
       }
       break;
     }

@@ -63,8 +63,25 @@ export async function runEnrichment(opts?: { rerun?: boolean }): Promise<void> {
   // the cinematic if the user clicked through fast (unlikely but cheap).
   const fresh = useRanBerri.getState().submission ?? submission;
   const conflicts = detectConflicts(fresh, results);
-  const gaps = detectGaps(fresh);
+  const structuralGaps = detectGaps(fresh);
 
+  // Snapshot the prior state BEFORE we emit detection events. We use
+  // this to compute the dismissal diff: any conflict / gap that was
+  // active before this pass and is no longer active after detection
+  // gets a dismissed event.
+  const prior = useRanBerri.getState().enrichment;
+  const priorActiveConflictIds = new Set(
+    prior.conflicts.filter((c) => !c.dismissed).map((c) => c.id),
+  );
+  const priorActiveGapIds = new Set(
+    prior.gaps.filter((g) => !g.dismissed).map((g) => g.id),
+  );
+  const priorResolvedGapIds = new Set(
+    prior.gaps.filter((g) => g.resolution !== null && !g.dismissed).map((g) => g.id),
+  );
+
+  // Emit conflict.detected for every active conflict. Replay
+  // re-attaches any prior resolution that lives in the log.
   for (const c of conflicts) {
     useRanBerri.getState().appendAuditEvent({
       actor: { kind: 'system' },
@@ -81,7 +98,11 @@ export async function runEnrichment(opts?: { rerun?: boolean }): Promise<void> {
     });
   }
 
-  for (const g of gaps) {
+  // Emit gap.detected only for structural gaps that don't carry a
+  // prior resolution (e.g. 'request' resolutions don't populate the
+  // underwriter layer; we don't want to re-detect them every pass).
+  for (const g of structuralGaps) {
+    if (priorResolvedGapIds.has(g.id)) continue;
     useRanBerri.getState().appendAuditEvent({
       actor: { kind: 'system' },
       kind: 'gap.detected',
@@ -92,6 +113,33 @@ export async function runEnrichment(opts?: { rerun?: boolean }): Promise<void> {
     });
   }
 
+  // ---- dismissal diff ----
+  const newConflictIds = new Set(conflicts.map((c) => c.id));
+  for (const id of priorActiveConflictIds) {
+    if (!newConflictIds.has(id)) {
+      useRanBerri.getState().appendAuditEvent({
+        actor: { kind: 'system' },
+        kind: 'conflict.dismissed',
+        submissionId: SUBMISSION_ID,
+        conflictId: id,
+        reason: 'no longer detected — broker value reconciled with external source',
+      });
+    }
+  }
+
+  const newGapIds = new Set(structuralGaps.map((g) => g.id));
+  for (const id of priorActiveGapIds) {
+    if (!newGapIds.has(id)) {
+      useRanBerri.getState().appendAuditEvent({
+        actor: { kind: 'system' },
+        kind: 'gap.dismissed',
+        submissionId: SUBMISSION_ID,
+        gapId: id,
+        reason: 'no longer detected — field has been populated',
+      });
+    }
+  }
+
   // ---- completion ----
   useRanBerri.getState().appendAuditEvent({
     actor: { kind: 'system' },
@@ -99,7 +147,8 @@ export async function runEnrichment(opts?: { rerun?: boolean }): Promise<void> {
     submissionId: SUBMISSION_ID,
     sources: ENRICHMENT_SOURCES.map((s) => s.id),
     conflictCount: conflicts.length,
-    gapCount: gaps.length,
+    gapCount: structuralGaps.filter((g) => !priorResolvedGapIds.has(g.id))
+      .length,
   });
 
   // Mark both enrichment and conflicts artifacts as computed. Rating /

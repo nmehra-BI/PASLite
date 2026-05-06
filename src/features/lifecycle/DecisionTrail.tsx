@@ -17,10 +17,12 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'enrichment.rerun': 'Enrichment rerun',
   'conflict.detected': 'Conflict raised',
   'conflict.resolved': 'Conflict resolved',
+  'conflict.dismissed': 'Conflict reconciled',
   'conflict.flagged': 'Conflict flagged',
   'gap.flagged': 'Gap flagged',
   'gap.detected': 'Gap surfaced',
   'gap.resolved': 'Gap resolved',
+  'gap.dismissed': 'Gap closed',
   'gap.requestSent': 'Broker request queued',
   'field.corrected': 'Field corrected',
   'rating.computed': 'Rating computed',
@@ -73,7 +75,9 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'enrichment.completed' ||
     kind === 'rating.computed' ||
     kind === 'quote.issued' ||
-    kind === 'artifact.computed'
+    kind === 'artifact.computed' ||
+    kind === 'conflict.dismissed' ||
+    kind === 'gap.dismissed'
   )
     return 'var(--color-success)';
   return 'var(--color-ink)';
@@ -151,6 +155,12 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
         event,
         subtitle: `${event.fieldPath} · ${event.choice}`,
       };
+    }
+    if (event.kind === 'conflict.dismissed') {
+      return { kind: 'event', event, subtitle: event.reason };
+    }
+    if (event.kind === 'gap.dismissed') {
+      return { kind: 'event', event, subtitle: event.reason };
     }
     if (event.kind === 'field.corrected') {
       const subtitle = event.note

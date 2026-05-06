@@ -135,6 +135,21 @@ export type AuditEvent = AuditEventBase &
         resolvedBy: string;
       }
     | {
+        /**
+         * Emitted by the enrichment engine when a previously-detected
+         * conflict no longer manifests on a fresh detection pass
+         * (e.g. the underwriter corrected the broker value to match
+         * the external source, reconciling the disagreement). The
+         * conflict record stays in memory marked `dismissed: true`
+         * so prior resolution can be re-attached if the conflict
+         * re-emerges.
+         */
+        kind: 'conflict.dismissed';
+        submissionId: string;
+        conflictId: string;
+        reason: string;
+      }
+    | {
         kind: 'gap.detected';
         submissionId: string;
         gapId: string;
@@ -150,6 +165,12 @@ export type AuditEvent = AuditEventBase &
         value: boolean | null;
         reason: string;
         resolvedBy: string;
+      }
+    | {
+        kind: 'gap.dismissed';
+        submissionId: string;
+        gapId: string;
+        reason: string;
       }
     | {
         kind: 'gap.requestSent';

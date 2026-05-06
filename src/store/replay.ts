@@ -55,6 +55,13 @@ export type ConflictRecord = {
   marginalia: string;
   detectedAt: string;
   resolution: ConflictResolution | null;
+  /**
+   * Set to true when the engine has determined the conflict no
+   * longer manifests (e.g. broker value reconciled with external).
+   * Cleared when re-detection re-establishes the conflict, at which
+   * point any prior resolution carries over.
+   */
+  dismissed: boolean;
 };
 
 export type ConflictResolution = {
@@ -73,6 +80,8 @@ export type GapRecord = {
   resolution: GapResolution | null;
   /** A 'request' resolution adds a gap.requestSent event with this. */
   requestSent: { recipient: string; queuedAt: string } | null;
+  /** Mirror of ConflictRecord.dismissed; set when the gap is reconciled. */
+  dismissed: boolean;
 };
 
 export type GapResolution = {
@@ -263,6 +272,9 @@ export function replay(events: AuditEvent[]): ReplayResult {
           marginalia: e.marginalia,
           detectedAt: e.at,
           resolution: existing?.resolution ?? null,
+          // Re-detection un-dismisses; if the conflict is back, it's
+          // active again (resolution preserved).
+          dismissed: false,
         };
         if (existing) {
           enrichment.conflicts = enrichment.conflicts.map((c) =>
@@ -291,6 +303,17 @@ export function replay(events: AuditEvent[]): ReplayResult {
         break;
       }
 
+      case 'conflict.dismissed': {
+        const idx = enrichment.conflicts.findIndex((c) => c.id === e.conflictId);
+        if (idx >= 0) {
+          enrichment.conflicts[idx] = {
+            ...enrichment.conflicts[idx]!,
+            dismissed: true,
+          };
+        }
+        break;
+      }
+
       case 'gap.detected': {
         const existing = enrichment.gaps.find((g) => g.id === e.gapId);
         const next: GapRecord = {
@@ -300,6 +323,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
           detectedAt: e.at,
           resolution: existing?.resolution ?? null,
           requestSent: existing?.requestSent ?? null,
+          dismissed: false,
         };
         if (existing) {
           enrichment.gaps = enrichment.gaps.map((g) =>
@@ -323,6 +347,17 @@ export function replay(events: AuditEvent[]): ReplayResult {
               resolvedBy: e.resolvedBy,
               resolvedAt: e.at,
             },
+          };
+        }
+        break;
+      }
+
+      case 'gap.dismissed': {
+        const idx = enrichment.gaps.findIndex((g) => g.id === e.gapId);
+        if (idx >= 0) {
+          enrichment.gaps[idx] = {
+            ...enrichment.gaps[idx]!,
+            dismissed: true,
           };
         }
         break;

@@ -123,6 +123,105 @@ describe('applyCorrection — turnover £8.4M → £7.9M', () => {
   });
 });
 
+describe('resolveConflict — restoring conflicts artifact freshness', () => {
+  beforeEach(() => {
+    useRanBerri.getState().reset();
+    useRanBerri.getState().appendAuditEvent({
+      actor: { kind: 'broker', id: 'test' },
+      kind: 'submission.created',
+      submissionId: 'sub_test_1',
+      folio: 'TEST-001',
+      broker: 'BrokerCo',
+      submission: buildSubmission(),
+    });
+    // Pretend extraction + enrichment have already settled.
+    const s = useRanBerri.getState();
+    s.markArtifactComputed('enrichment', '2026-05-06T08:31:00Z');
+    s.markArtifactComputed('conflicts', '2026-05-06T08:32:00Z');
+    s.markArtifactComputed('rating', '2026-05-06T08:33:00Z');
+    s.markArtifactComputed('quote', '2026-05-06T08:34:00Z');
+    s.markArtifactComputed('recommendation', '2026-05-06T08:35:00Z');
+  });
+
+  it('writes the underwriter layer, stales rating/quote/recommendation, but keeps conflicts fresh', () => {
+    useRanBerri.getState().resolveConflict({
+      conflictId: 'conflict_turnover',
+      fieldPath: 'insured.turnover',
+      choice: 'external',
+      value: 7_910_000,
+      reason: 'FY24 not yet filed.',
+      resolvedBy: 'nm',
+    });
+
+    const after = useRanBerri.getState();
+    expect(after.submission!.insured.turnover.underwriterCorrected?.value).toBe(
+      7_910_000,
+    );
+    // Rating / quote / recommendation are stale — turnover changed.
+    expect(after.artifacts.rating.staleSince).not.toBeNull();
+    expect(after.artifacts.quote.staleSince).not.toBeNull();
+    expect(after.artifacts.recommendation.staleSince).not.toBeNull();
+    // Conflicts is FRESH — the resolution we just emitted is the latest
+    // declaration of conflict state.
+    expect(after.artifacts.conflicts.staleSince).toBeNull();
+    expect(after.artifacts.conflicts.computedAt).not.toBeNull();
+  });
+
+  it('emits the expected event sequence: conflict.resolved, field.corrected, artifact.stale × N, artifact.computed (conflicts)', () => {
+    const before = useRanBerri.getState().auditLog.length;
+    useRanBerri.getState().resolveConflict({
+      conflictId: 'conflict_turnover',
+      fieldPath: 'insured.turnover',
+      choice: 'external',
+      value: 7_910_000,
+      reason: 'FY24 not yet filed.',
+      resolvedBy: 'nm',
+    });
+    const newEvents = useRanBerri.getState().auditLog.slice(before);
+    const kinds = newEvents.map((e) => e.kind);
+    expect(kinds[0]).toBe('conflict.resolved');
+    expect(kinds[1]).toBe('field.corrected');
+    // The cascade includes conflicts (turnover ∈ conflicts.sources)
+    const staleArtifacts = newEvents
+      .filter((e) => e.kind === 'artifact.stale')
+      .map((e) => (e.kind === 'artifact.stale' ? e.artifact : ''));
+    expect(staleArtifacts).toContain('conflicts');
+    expect(staleArtifacts).toContain('rating');
+    // The follow-up artifact.computed restores conflicts
+    const last = newEvents[newEvents.length - 1]!;
+    expect(last.kind).toBe('artifact.computed');
+    if (last.kind === 'artifact.computed') {
+      expect(last.artifact).toBe('conflicts');
+    }
+  });
+
+  it('a second resolveConflict on the same id appends new events (audit is append-only)', () => {
+    useRanBerri.getState().resolveConflict({
+      conflictId: 'conflict_turnover',
+      fieldPath: 'insured.turnover',
+      choice: 'external',
+      value: 7_910_000,
+      reason: 'first reason: at least 8 chars.',
+      resolvedBy: 'nm',
+    });
+    const afterFirst = useRanBerri.getState().auditLog.length;
+    useRanBerri.getState().resolveConflict({
+      conflictId: 'conflict_turnover',
+      fieldPath: 'insured.turnover',
+      choice: 'broker',
+      value: 8_400_000,
+      reason: 'changed mind: trust broker.',
+      resolvedBy: 'nm',
+    });
+    const afterSecond = useRanBerri.getState().auditLog.length;
+    expect(afterSecond).toBeGreaterThan(afterFirst);
+    // Latest field.corrected wins in materialised state
+    const t = useRanBerri.getState().submission!.insured.turnover;
+    expect(t.underwriterCorrected?.value).toBe(8_400_000);
+    expect(t.underwriterCorrected?.reason).toContain('trust broker');
+  });
+});
+
 describe('applyCorrection — guards', () => {
   beforeEach(() => useRanBerri.getState().reset());
 

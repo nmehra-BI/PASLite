@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { Check, Pencil } from 'lucide-react';
 import { useIntake } from '@/features/intake';
 import type { ConflictRecord, GapRecord } from '@/store/replay';
 
@@ -16,14 +16,26 @@ const formatStamp = (iso: string): string => {
 
 const fieldName = (path: string) => path.split('.').pop() ?? path;
 
-export function ResolvedConflictRow({ conflict }: { conflict: ConflictRecord }) {
-  const open = useIntake((s) => s.openConflictInspector);
+export function ResolvedConflictRow({
+  conflict,
+  onReopen,
+}: {
+  conflict: ConflictRecord;
+  /** Tap to re-open the resolution form pre-filled with the prior choice. */
+  onReopen?: (conflictId: string) => void;
+}) {
+  const openInspector = useIntake((s) => s.openConflictInspector);
   const r = conflict.resolution!;
+  const handleClick = () => {
+    if (onReopen) onReopen(conflict.id);
+    else openInspector(conflict.id);
+  };
   return (
     <button
       type="button"
-      onClick={() => open(conflict.id)}
-      className="flex items-baseline gap-3"
+      onClick={handleClick}
+      className="flex items-baseline gap-3 group"
+      title={onReopen ? 'click to revise resolution' : 'click for full provenance'}
       style={{
         width: '100%',
         textAlign: 'left',
@@ -66,6 +78,17 @@ export function ResolvedConflictRow({ conflict }: { conflict: ConflictRecord }) 
       >
         {r.resolvedBy} · {formatStamp(r.resolvedAt)}
       </span>
+      {onReopen && (
+        <Pencil
+          size={11}
+          strokeWidth={1.5}
+          style={{
+            color: 'var(--color-ink-faint)',
+            alignSelf: 'center',
+            opacity: 0.6,
+          }}
+        />
+      )}
     </button>
   );
 }

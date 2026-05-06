@@ -341,6 +341,93 @@ describe('replay', () => {
     expect(g.requestSent?.recipient).toBe('s.whitfield@surestep.co.uk');
   });
 
+  it('conflict.dismissed marks the conflict dismissed (does not remove it)', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T08:15:01Z',
+        actor: { kind: 'system' },
+        kind: 'conflict.detected',
+        submissionId: SUB_ID,
+        conflictId: 'conflict_turnover',
+        fieldPath: 'insured.turnover',
+        brokerValue: 8_420_000,
+        brokerSourceRef: 'slip:p2:l14',
+        externalSource: 'companies-house',
+        externalValue: 7_910_000,
+        externalSourceRef: 'CH:filing:FY23',
+        marginalia: '...',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T08:18:00Z',
+        actor: { kind: 'system' },
+        kind: 'conflict.dismissed',
+        submissionId: SUB_ID,
+        conflictId: 'conflict_turnover',
+        reason: 'no longer detected',
+      },
+    ];
+    const r = replay(events);
+    expect(r.enrichment.conflicts).toHaveLength(1);
+    expect(r.enrichment.conflicts[0]!.dismissed).toBe(true);
+    // Resolution slot stays null (it was never resolved)
+    expect(r.enrichment.conflicts[0]!.resolution).toBeNull();
+  });
+
+  it('re-detection un-dismisses a conflict and preserves its prior resolution', () => {
+    const detect = (): AuditEvent => ({
+      id: id(),
+      at: '2026-05-09T08:15:01Z',
+      actor: { kind: 'system' },
+      kind: 'conflict.detected',
+      submissionId: SUB_ID,
+      conflictId: 'conflict_turnover',
+      fieldPath: 'insured.turnover',
+      brokerValue: 8_420_000,
+      brokerSourceRef: 'slip:p2:l14',
+      externalSource: 'companies-house',
+      externalValue: 7_910_000,
+      externalSourceRef: 'CH:filing:FY23',
+      marginalia: '...',
+    });
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      detect(),
+      {
+        id: id(),
+        at: '2026-05-09T09:18:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'conflict.resolved',
+        submissionId: SUB_ID,
+        conflictId: 'conflict_turnover',
+        fieldPath: 'insured.turnover',
+        choice: 'external',
+        value: 7_910_000,
+        reason: 'FY24 not yet filed.',
+        resolvedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:30:00Z',
+        actor: { kind: 'system' },
+        kind: 'conflict.dismissed',
+        submissionId: SUB_ID,
+        conflictId: 'conflict_turnover',
+        reason: 'reconciled',
+      },
+      // Re-detected on a later rerun
+      { ...detect(), id: id(), at: '2026-05-09T10:00:00Z' },
+    ];
+    const r = replay(events);
+    expect(r.enrichment.conflicts).toHaveLength(1);
+    const c = r.enrichment.conflicts[0]!;
+    expect(c.dismissed).toBe(false);
+    expect(c.resolution?.value).toBe(7_910_000);
+    expect(c.resolution?.choice).toBe('external');
+  });
+
   it('artifact.computed clears staleSince', () => {
     const events: AuditEvent[] = [
       {

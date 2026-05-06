@@ -33,6 +33,7 @@ export function EnrichmentSection() {
   const auditLog = useRanBerri((s) => s.auditLog);
   const firedForExtractionAtRef = useRef<number>(-1);
   const [running, setRunning] = useState(false);
+  const [editingConflictId, setEditingConflictId] = useState<string | null>(null);
 
   // Auto-fire enrichment once per `extraction.completed` event. This
   // covers both the first run (initial extraction) and re-extraction
@@ -67,10 +68,14 @@ export function EnrichmentSection() {
 
   const isQuerying = enrichment.phase === 'querying';
   const isSettled = enrichment.phase === 'settled';
-  const unresolvedConflicts = enrichment.conflicts.filter((c) => !c.resolution);
-  const resolvedConflicts = enrichment.conflicts.filter((c) => c.resolution);
-  const unresolvedGaps = enrichment.gaps.filter((g) => !g.resolution);
-  const resolvedGaps = enrichment.gaps.filter((g) => g.resolution);
+  // Dismissed conflicts/gaps are reconciled — the materialised record
+  // stays for prior-resolution preservation but the UI hides them.
+  const visibleConflicts = enrichment.conflicts.filter((c) => !c.dismissed);
+  const visibleGaps = enrichment.gaps.filter((g) => !g.dismissed);
+  const unresolvedConflicts = visibleConflicts.filter((c) => !c.resolution);
+  const resolvedConflicts = visibleConflicts.filter((c) => c.resolution);
+  const unresolvedGaps = visibleGaps.filter((g) => !g.resolution);
+  const resolvedGaps = visibleGaps.filter((g) => g.resolution);
 
   return (
     <section
@@ -127,6 +132,9 @@ export function EnrichmentSection() {
               resolvedConflicts={resolvedConflicts}
               unresolvedGaps={unresolvedGaps}
               resolvedGaps={resolvedGaps}
+              editingConflictId={editingConflictId}
+              onReopenConflict={setEditingConflictId}
+              onCloseEditor={() => setEditingConflictId(null)}
             />
             <ConfirmedSourcesPanel />
           </motion.div>
@@ -204,13 +212,29 @@ function Reconciliation({
   resolvedConflicts,
   unresolvedGaps,
   resolvedGaps,
+  editingConflictId,
+  onReopenConflict,
+  onCloseEditor,
 }: {
   unresolvedConflicts: import('@/store/replay').ConflictRecord[];
   resolvedConflicts: import('@/store/replay').ConflictRecord[];
   unresolvedGaps: import('@/store/replay').GapRecord[];
   resolvedGaps: import('@/store/replay').GapRecord[];
+  editingConflictId: string | null;
+  onReopenConflict: (id: string) => void;
+  onCloseEditor: () => void;
 }) {
   const hasResolved = resolvedConflicts.length + resolvedGaps.length > 0;
+  // Resolved conflicts that are NOT currently being edited render as
+  // collapsed rows. The one being edited promotes to a full ConflictCard
+  // pre-filled with its prior resolution.
+  const collapsedResolvedConflicts = resolvedConflicts.filter(
+    (c) => c.id !== editingConflictId,
+  );
+  const editingConflict = resolvedConflicts.find(
+    (c) => c.id === editingConflictId,
+  );
+
   return (
     <div style={{ marginTop: 22 }}>
       {hasResolved && (
@@ -218,8 +242,12 @@ function Reconciliation({
           <div className="eyebrow" style={{ marginBottom: 6 }}>
             resolved · {resolvedConflicts.length + resolvedGaps.length}
           </div>
-          {resolvedConflicts.map((c) => (
-            <ResolvedConflictRow key={c.id} conflict={c} />
+          {collapsedResolvedConflicts.map((c) => (
+            <ResolvedConflictRow
+              key={c.id}
+              conflict={c}
+              onReopen={onReopenConflict}
+            />
           ))}
           {resolvedGaps.map((g) => (
             <ResolvedGapRow key={g.id} gap={g} />
@@ -228,6 +256,14 @@ function Reconciliation({
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {editingConflict && (
+          <ConflictCard
+            key={`edit-${editingConflict.id}`}
+            conflict={editingConflict}
+            editing
+            onClose={onCloseEditor}
+          />
+        )}
         {unresolvedConflicts.map((c) => (
           <ConflictCard key={c.id} conflict={c} />
         ))}

@@ -8,6 +8,14 @@ type Choice = 'broker' | 'external' | 'custom';
 
 type Props = {
   conflict: ConflictRecord;
+  /**
+   * When set, the card is in edit mode for an already-resolved
+   * conflict: the form pre-fills from the existing resolution and
+   * shows a Cancel button alongside Resolve →.
+   */
+  editing?: boolean;
+  /** Invoked on Cancel or after a successful save in edit mode. */
+  onClose?: () => void;
 };
 
 const formatGBP = (v: unknown) =>
@@ -22,11 +30,16 @@ const formatGBP = (v: unknown) =>
  * like a quoted email; the regulator's column reads like an official
  * record.
  */
-export function ConflictCard({ conflict }: Props) {
+export function ConflictCard({ conflict, editing = false, onClose }: Props) {
   const resolveConflict = useRanBerri((s) => s.resolveConflict);
-  const [choice, setChoice] = useState<Choice | null>(null);
-  const [reason, setReason] = useState('');
-  const [customValue, setCustomValue] = useState('');
+  const existing = editing ? conflict.resolution : null;
+  const [choice, setChoice] = useState<Choice | null>(existing?.choice ?? null);
+  const [reason, setReason] = useState(existing?.reason ?? '');
+  const [customValue, setCustomValue] = useState(
+    existing?.choice === 'custom' && typeof existing.value === 'number'
+      ? String(existing.value)
+      : '',
+  );
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit =
@@ -57,6 +70,7 @@ export function ConflictCard({ conflict }: Props) {
         reason: reason.trim(),
         resolvedBy: 'nm',
       });
+      onClose?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -84,8 +98,14 @@ export function ConflictCard({ conflict }: Props) {
         maxWidth: 720,
       }}
     >
-      <div className="eyebrow" style={{ color: 'var(--color-warn)' }}>
-        {conflict.fieldPath.split('.').pop()?.toUpperCase()} · CONFLICT
+      <div
+        className="eyebrow"
+        style={{
+          color: editing ? 'var(--color-accent)' : 'var(--color-warn)',
+        }}
+      >
+        {conflict.fieldPath.split('.').pop()?.toUpperCase()} ·{' '}
+        {editing ? 'EDIT RESOLUTION' : 'CONFLICT'}
       </div>
       <div
         className="serif"
@@ -96,9 +116,11 @@ export function ConflictCard({ conflict }: Props) {
           marginTop: 2,
         }}
       >
-        {delta !== null
-          ? `two sources disagree by £${delta.toLocaleString()}`
-          : 'two sources disagree'}
+        {editing
+          ? 'change which source you trust, or revise the reason'
+          : delta !== null
+            ? `two sources disagree by £${delta.toLocaleString()}`
+            : 'two sources disagree'}
       </div>
 
       <div
@@ -250,15 +272,20 @@ export function ConflictCard({ conflict }: Props) {
             </p>
           )}
 
-          <div style={{ marginTop: 12 }}>
+          <div className="flex items-center gap-2" style={{ marginTop: 12 }}>
             <Button
               variant="primary"
               size="sm"
               onClick={handleResolve}
               disabled={!canSubmit}
             >
-              Resolve →
+              {editing ? 'Update →' : 'Resolve →'}
             </Button>
+            {editing && (
+              <Button variant="ghost" size="sm" onClick={() => onClose?.()}>
+                Cancel
+              </Button>
+            )}
           </div>
         </div>
       </div>
