@@ -13,10 +13,19 @@ import { receiveMtaRequest, runMtaExtraction } from '@/lib/mta';
 export function MtaIntakeButton() {
   const bind = useRanBerri((s) => s.bind);
   const mta = useRanBerri((s) => s.mta);
+  const cursor = useRanBerri((s) => s.lifecycle.cursor);
+  const now = useRanBerri((s) => s.lifecycle.now);
   const [running, setRunning] = useState(false);
 
   if (bind.phase !== 'committed') return null;
-  if (mta.phase !== 'idle') return null;
+  // Don't offer a "Receive MTA request" button when the user is
+  // scrubbed off-now — that's a historical view, not an actionable
+  // surface.
+  if (cursor !== now) return null;
+  // The button reappears once a prior MTA has settled (committed/sent).
+  const priorSettled =
+    mta.phase === 'committed' || mta.phase === 'sent' || mta.phase === 'held';
+  if (mta.phase !== 'idle' && !priorSettled) return null;
 
   return (
     <div

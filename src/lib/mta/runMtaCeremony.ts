@@ -17,7 +17,7 @@ import {
 } from '@/lib/fixtures';
 import { computeSha, GREENLINE_CONSUMPTION } from '@/lib/bind';
 import { computeDeltaRating } from './computeDelta';
-import type { MtaHashId } from './types';
+import { freshMta, type MtaHashId } from './types';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -30,14 +30,35 @@ export function receiveMtaRequest(opts?: {
   request?: MtaRequest;
   receivedAt?: string;
 }) {
-  const { submission, appendAuditEvent, bind } = useRanBerri.getState();
+  const state = useRanBerri.getState();
+  const { submission, appendAuditEvent, bind, mta, policy } = state;
   if (!submission) throw new Error('receiveMtaRequest: no active submission');
   if (bind.phase !== 'committed') {
     throw new Error('receiveMtaRequest: policy is not bound');
   }
-  const request = opts?.request ?? getManchesterMtaRequest();
+  // Sequential MTAs: if the prior MTA workflow has settled
+  // (committed / sent), reset the slice in place so this new request
+  // starts fresh. policy.versions stays untouched; the new MTA's
+  // delta will baseline off the latest version's annual equivalent.
+  const priorSettled =
+    mta.phase === 'committed' || mta.phase === 'sent' || mta.phase === 'held';
+  if (priorSettled) {
+    useRanBerri.setState({ mta: freshMta() });
+  }
+
+  // Pick a default request. For the first MTA we use the Manchester
+  // fixture as-is (id = MTA-04). For subsequent MTAs we increment
+  // the id off the prior version count so the schedule ref reads
+  // MTA-05, MTA-06, etc. — collisions with the fixture's MTA-04
+  // are avoided.
+  const baseRequest = opts?.request ?? getManchesterMtaRequest();
+  const reused = !opts?.request;
+  const nextId = reused && policy.versions.length > 0
+    ? `MTA-${(4 + policy.versions.length).toString().padStart(2, '0')}`
+    : baseRequest.id;
   const stamped: MtaRequest = {
-    ...request,
+    ...baseRequest,
+    id: nextId,
     receivedAt: opts?.receivedAt ?? new Date().toISOString(),
   };
   appendAuditEvent({
@@ -52,6 +73,7 @@ export function receiveMtaRequest(opts?: {
   });
   return stamped;
 }
+
 
 /**
  * Cinematic extraction — staggered field reveals via mta.extracted.
@@ -120,6 +142,50 @@ export async function runMtaExtraction(opts?: {
   if (opts?.cinematic) await sleep(200);
 }
 
+/**
+ * Underwriter correction to an extracted MTA field. Writes both
+ * mta.fieldCorrected (the intent) and mta.markedStale (the cascade
+ * marker) so downstream artefacts (delta / capacity / schedule) get
+ * cleared and the ceremony cannot proceed until rerun.
+ */
+export function applyMtaCorrection(input: {
+  fieldKey: 'newTurnover' | 'newSiteSqm';
+  nextValue: number;
+  reason: string;
+  correctedBy: string;
+}) {
+  const state = useRanBerri.getState();
+  const { submission, appendAuditEvent, mta } = state;
+  if (!submission) throw new Error('applyMtaCorrection: no active submission');
+  if (!mta.request) throw new Error('applyMtaCorrection: no active mta request');
+  if (input.reason.trim().length < 8) {
+    throw new Error('applyMtaCorrection: reason must be ≥8 chars');
+  }
+  const prev =
+    input.fieldKey === 'newTurnover'
+      ? mta.corrections.newTurnover ?? mta.fields?.newTurnover ?? 0
+      : mta.corrections.newSiteSqm ?? 0;
+  appendAuditEvent({
+    actor: { kind: 'underwriter', id: input.correctedBy },
+    kind: 'mta.fieldCorrected',
+    submissionId: submission.id,
+    mtaId: mta.request.id,
+    fieldKey: input.fieldKey,
+    previousValue: prev,
+    nextValue: input.nextValue,
+    reason: input.reason.trim(),
+    correctedBy: input.correctedBy,
+  });
+  // Cascade: invalidate downstream artefacts.
+  appendAuditEvent({
+    actor: { kind: 'system' },
+    kind: 'mta.markedStale',
+    submissionId: submission.id,
+    mtaId: mta.request.id,
+    affected: ['context-review', 'delta-rating', 'capacity', 'schedule'],
+  });
+}
+
 export function resolveMtaGap(input: {
   gapId: string;
   choice: 'conditional' | 'wait' | 'decline';
@@ -146,14 +212,34 @@ export function resolveMtaGap(input: {
 
 export function runDeltaRating() {
   const state = useRanBerri.getState();
-  const { submission, appendAuditEvent, mta, quote } = state;
+  const { submission, appendAuditEvent, mta, quote, policy } = state;
   if (!submission) throw new Error('runDeltaRating: no active submission');
   if (!mta.request) throw new Error('runDeltaRating: no active mta request');
 
+  // The "BEFORE" baseline for delta rating is the policy's CURRENT
+  // annual equivalent — i.e. the latest committed version, falling
+  // back to the original bound premium if no MTAs have applied yet.
+  // This is what makes sequential MTAs price against the right base.
+  const latest = policy.versions[policy.versions.length - 1];
+  const baselinePremium = latest?.afterAnnualEquivalent ?? quote.slipPremium ?? 0;
+
+  // Apply any underwriter corrections to the MTA request before
+  // running the rating. This is what closes the staleness loop:
+  // edited turnover → rerun produces a fresh sha against the new value.
+  const fixture = getManchesterMtaRequest();
+  const corrected: typeof fixture = {
+    ...fixture,
+    newTurnover: mta.corrections.newTurnover ?? fixture.newTurnover,
+    newSite: {
+      ...fixture.newSite,
+      sqm: mta.corrections.newSiteSqm ?? fixture.newSite.sqm,
+    },
+  };
+
   const breakdown = computeDeltaRating({
     submission,
-    mta: getManchesterMtaRequest(),
-    boundPremium: quote.slipPremium ?? 0,
+    mta: corrected,
+    boundPremium: baselinePremium,
   });
 
   appendAuditEvent({
@@ -204,14 +290,19 @@ export function recheckCapacity() {
  */
 export function generateMtaSchedule() {
   const state = useRanBerri.getState();
-  const { submission, appendAuditEvent, mta, bind, policy } = state;
+  const { submission, appendAuditEvent, mta, bind } = state;
   if (!submission) throw new Error('generateMtaSchedule: no active submission');
   if (!mta.request) throw new Error('generateMtaSchedule: no active mta request');
   if (!mta.delta) throw new Error('generateMtaSchedule: delta rating required');
 
   const policyRef = bind.policyRef ?? mta.request.policyRef;
-  const endorsementNumber = policy.versions.length + 1;
-  const scheduleRef = `${policyRef}-MTA-0${endorsementNumber}`;
+  // Endorsement number derives from the fixture id "MTA-04" so the
+  // demo's schedule ref reads as POL-29481-MTA-04, matching the spec
+  // and the lifecycle ribbon's mta-04 milestone. Falls back to a
+  // monotonic counter if the id is non-standard.
+  const idMatch = mta.request.id.match(/MTA-(\d+)/i);
+  const endorsementNumber = idMatch ? parseInt(idMatch[1]!, 10) : state.policy.versions.length + 1;
+  const scheduleRef = `${policyRef}-MTA-${endorsementNumber.toString().padStart(2, '0')}`;
   const SHORT_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',
     month: 'long',
@@ -279,7 +370,11 @@ export function commitMta(signedBy: string = 'nm') {
     mta.hashes.every((h) => h.status === 'confirmed' || h.status === 'overridden');
   if (!allConfirmed) throw new Error('commitMta: both hashes must be confirmed');
 
-  const endorsementNumber = policy.versions.length + 1;
+  // Match the schedule's endorsement number derivation (fixture id).
+  const idMatch = mta.request.id.match(/MTA-(\d+)/i);
+  const endorsementNumber = idMatch
+    ? parseInt(idMatch[1]!, 10)
+    : policy.versions.length + 1;
 
   appendAuditEvent({
     actor: { kind: 'underwriter', id: signedBy },

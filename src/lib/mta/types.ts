@@ -138,6 +138,11 @@ export type MtaReplay = {
   sentAt: string | null;
   sentBy: string | null;
   signedBy: string | null;
+  /** Underwriter-applied corrections to the extracted MTA fields. */
+  corrections: { newTurnover?: number; newSiteSqm?: number };
+  /** Set when an upstream correction has invalidated downstream
+   *  artefacts; ceremony cannot proceed until rerun. */
+  staleSince: string | null;
 };
 
 export function freshMta(): MtaReplay {
@@ -156,6 +161,8 @@ export function freshMta(): MtaReplay {
     sentAt: null,
     sentBy: null,
     signedBy: null,
+    corrections: {},
+    staleSince: null,
   };
 }
 

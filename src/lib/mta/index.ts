@@ -12,6 +12,7 @@ export type {
   PolicyStateAt,
 } from './getPolicyStateAt';
 export {
+  applyMtaCorrection,
   commitMta,
   confirmMtaHash,
   generateMtaSchedule,

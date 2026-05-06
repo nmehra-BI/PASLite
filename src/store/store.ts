@@ -1483,6 +1483,7 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
         afterCells: [],
       };
       s.mta.phase = 'delta-rating';
+      s.mta.staleSince = null;
       break;
 
     case 'mta.capacityRechecked':
@@ -1575,6 +1576,29 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
       s.mta.sentAt = e.at;
       s.mta.sentBy = e.sentBy;
       s.mta.phase = 'sent';
+      break;
+
+    case 'mta.fieldCorrected':
+      if (e.fieldKey === 'newTurnover') s.mta.corrections.newTurnover = e.nextValue;
+      else if (e.fieldKey === 'newSiteSqm') s.mta.corrections.newSiteSqm = e.nextValue;
+      s.mta.hashes = [];
+      s.mta.phase = 'context-review';
+      break;
+
+    case 'mta.markedStale':
+      s.mta.staleSince = e.at;
+      s.mta.delta = null;
+      s.mta.capacity = null;
+      s.mta.schedule = null;
+      s.mta.hashes = [];
+      if (
+        s.mta.phase === 'ceremony-in-progress' ||
+        s.mta.phase === 'schedule-ready' ||
+        s.mta.phase === 'capacity-rechecked' ||
+        s.mta.phase === 'delta-rating'
+      ) {
+        s.mta.phase = 'context-review';
+      }
       break;
 
     case 'slip.fieldEdited':

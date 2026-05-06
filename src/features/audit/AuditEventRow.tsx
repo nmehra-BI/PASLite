@@ -67,6 +67,8 @@ const KIND_TITLE: Partial<Record<AuditEvent['kind'], string>> = {
   'mta.hashOverridden': 'mta.hashOverridden',
   'mta.committed': 'mta.committed',
   'mta.scheduleSent': 'mta.scheduleSent',
+  'mta.fieldCorrected': 'mta.fieldCorrected',
+  'mta.markedStale': 'mta.markedStale',
 };
 
 function summarise(e: AuditEvent): string {

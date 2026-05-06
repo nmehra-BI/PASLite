@@ -607,6 +607,22 @@ export type AuditEvent = AuditEventBase &
         coveringNote: string;
         sentBy: string;
       }
+    | {
+        kind: 'mta.fieldCorrected';
+        submissionId: string;
+        mtaId: string;
+        fieldKey: 'newTurnover' | 'newSiteSqm';
+        previousValue: number;
+        nextValue: number;
+        reason: string;
+        correctedBy: string;
+      }
+    | {
+        kind: 'mta.markedStale';
+        submissionId: string;
+        mtaId: string;
+        affected: Array<'context-review' | 'delta-rating' | 'capacity' | 'schedule'>;
+      }
   );
 
 export type AuditEventKind = AuditEvent['kind'];

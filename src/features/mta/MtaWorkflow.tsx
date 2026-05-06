@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { Check, FileText } from 'lucide-react';
 import { useRanBerri } from '@/store';
+import { deriveCursorView } from '@/lib/lifecycle/cursorView';
 import { MtaIntakeBanner } from './MtaIntakeBanner';
 import { PolicyContextReview } from './PolicyContextReview';
 import { DeltaRatingSequence } from './DeltaRatingSequence';
@@ -24,9 +25,22 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
 export function MtaWorkflow() {
   const mta = useRanBerri((s) => s.mta);
   const policy = useRanBerri((s) => s.policy);
+  const cursor = useRanBerri((s) => s.lifecycle.cursor);
+  const now = useRanBerri((s) => s.lifecycle.now);
   const setShowCertificate = useRanBerri((s) => s.setShowCertificate);
 
   if (mta.phase === 'idle' && policy.versions.length === 0) return null;
+
+  // Scrubbing back to bind hides the MTA workflow surface: the
+  // historical view should look like the v1 state.
+  const cursorView = deriveCursorView({
+    cursor,
+    now,
+    baseBindAt: policy.baseBindAt,
+    versionCount: policy.versions.length,
+    firstMtaSignedAt: policy.versions[0]?.signedAt ?? null,
+  });
+  if (cursorView.kind === 'bind-v1') return null;
 
   const isExtracting =
     mta.phase === 'received' || mta.phase === 'extracting';

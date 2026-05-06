@@ -89,6 +89,8 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'mta.hashOverridden': 'MTA hash overridden',
   'mta.committed': 'MTA committed',
   'mta.scheduleSent': 'Revised schedule sent',
+  'mta.fieldCorrected': 'MTA field corrected',
+  'mta.markedStale': 'MTA marked stale',
 };
 
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {
@@ -136,8 +138,9 @@ function dotTone(kind: AuditEvent['kind']): string {
     return 'var(--color-accent)';
   if (kind === 'submission.declined' || kind === 'quote.markedStale' || kind === 'bind.hashFailed')
     return 'var(--color-danger)';
-  if (kind === 'mta.gapFlagged') return 'var(--color-warn)';
-  if (kind === 'mta.hashOverridden') return 'var(--color-accent)';
+  if (kind === 'mta.gapFlagged' || kind === 'mta.markedStale') return 'var(--color-warn)';
+  if (kind === 'mta.hashOverridden' || kind === 'mta.fieldCorrected')
+    return 'var(--color-accent)';
   if (
     kind === 'extraction.completed' ||
     kind === 'enrichment.completed' ||

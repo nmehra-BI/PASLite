@@ -1210,6 +1210,8 @@ export function replay(events: AuditEvent[]): ReplayResult {
           afterCells: [],
         };
         mta.phase = 'delta-rating';
+        // A successful rerun closes any prior staleness window.
+        mta.staleSince = null;
         break;
 
       case 'mta.capacityRechecked':
@@ -1301,6 +1303,26 @@ export function replay(events: AuditEvent[]): ReplayResult {
         mta.sentAt = e.at;
         mta.sentBy = e.sentBy;
         mta.phase = 'sent';
+        break;
+
+      case 'mta.fieldCorrected':
+        if (e.fieldKey === 'newTurnover') mta.corrections.newTurnover = e.nextValue;
+        else if (e.fieldKey === 'newSiteSqm') mta.corrections.newSiteSqm = e.nextValue;
+        // Hashes unconfirm so the ceremony cannot pass until rerun.
+        mta.hashes = [];
+        // Phase regresses to context-review awaiting rerun.
+        mta.phase = 'context-review';
+        break;
+
+      case 'mta.markedStale':
+        mta.staleSince = e.at;
+        mta.delta = null;
+        mta.capacity = null;
+        mta.schedule = null;
+        mta.hashes = [];
+        if (mta.phase === 'ceremony-in-progress' || mta.phase === 'schedule-ready' || mta.phase === 'capacity-rechecked' || mta.phase === 'delta-rating') {
+          mta.phase = 'context-review';
+        }
         break;
 
       // Pass-through:

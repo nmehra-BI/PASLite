@@ -18,15 +18,21 @@ export function DeltaRatingSequence() {
   const submission = useRanBerri((s) => s.submission);
   const mta = useRanBerri((s) => s.mta);
   const quote = useRanBerri((s) => s.quote);
+  const policy = useRanBerri((s) => s.policy);
+
+  const baselinePremium =
+    policy.versions[policy.versions.length - 1]?.afterAnnualEquivalent ??
+    quote.slipPremium ??
+    0;
 
   const live = useMemo(() => {
     if (!submission || !mta.request) return null;
     return computeDeltaRating({
       submission,
       mta: getManchesterMtaRequest(),
-      boundPremium: quote.slipPremium ?? 0,
+      boundPremium: baselinePremium,
     });
-  }, [submission, mta.request, quote.slipPremium]);
+  }, [submission, mta.request, baselinePremium]);
 
   if (!mta.delta || !live || !mta.request) return null;
   if (

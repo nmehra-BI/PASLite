@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRanBerri } from '@/store';
 import { Pill } from '@/components';
+import { deriveCursorView } from '@/lib/lifecycle/cursorView';
 
 /**
  * The submission/policy identity strip. Renders during the bind
@@ -19,11 +20,25 @@ export function BindIdentityStrip() {
   const policyRef = useRanBerri((s) => s.bind.policyRef);
   const policy = useRanBerri((s) => s.policy);
   const mta = useRanBerri((s) => s.mta);
+  const cursor = useRanBerri((s) => s.lifecycle.cursor);
+  const now = useRanBerri((s) => s.lifecycle.now);
+  const quote = useRanBerri((s) => s.quote);
   const folio = submission?.folio ?? '';
 
   if (!submission || (bindPhase !== 'in-progress' && bindPhase !== 'committed')) {
     return null;
   }
+
+  const cursorView = deriveCursorView({
+    cursor,
+    now,
+    baseBindAt: policy.baseBindAt,
+    versionCount: policy.versions.length,
+    firstMtaSignedAt: policy.versions[0]?.signedAt ?? null,
+  });
+  // When scrubbed back to 'bind' with ≥1 MTA in the log, render the
+  // v1 state: no version appendix, the bound premium, no MTA pill.
+  const showAsV1 = cursorView.kind === 'bind-v1';
 
   // Derive a clean SUB-29481 from the folio "MGA-PAS · folio 29481".
   const folioNum = folio.match(/folio\s+(\d+)/i)?.[1];
@@ -31,11 +46,12 @@ export function BindIdentityStrip() {
   const polRef = policyRef ?? (folioNum ? `POL-${folioNum}` : null);
   const isBound = bindPhase === 'committed';
   const versionLabel = `v${policy.versions.length + 1}`;
-  const hasMta = policy.versions.length > 0;
+  const hasMta = !showAsV1 && policy.versions.length > 0;
   const latestAP = policy.versions[policy.versions.length - 1]?.proRatedAP ?? 0;
-  const annualEquivalent =
-    policy.versions[policy.versions.length - 1]?.afterAnnualEquivalent ?? null;
-  const mtaJustIssued = mta.phase === 'committed' || mta.phase === 'sent';
+  const annualEquivalent = showAsV1
+    ? quote.slipPremium
+    : policy.versions[policy.versions.length - 1]?.afterAnnualEquivalent ?? null;
+  const mtaJustIssued = !showAsV1 && (mta.phase === 'committed' || mta.phase === 'sent');
 
   return (
     <div

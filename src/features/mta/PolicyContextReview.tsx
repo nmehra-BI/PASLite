@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Pencil, RotateCcw } from 'lucide-react';
 import { useRanBerri } from '@/store';
 import {
+  applyMtaCorrection,
   buildPolicyContextDiff,
+  generateMtaSchedule,
+  recheckCapacity,
   resolveMtaGap,
   runDeltaRating,
-  recheckCapacity,
-  generateMtaSchedule,
 } from '@/lib/mta';
 import { getManchesterMtaRequest } from '@/lib/fixtures';
 import { Button } from '@/components';
@@ -32,16 +33,39 @@ export function PolicyContextReview() {
   const submission = useRanBerri((s) => s.submission);
   const mta = useRanBerri((s) => s.mta);
   const quote = useRanBerri((s) => s.quote);
+  const policy = useRanBerri((s) => s.policy);
   const [advancing, setAdvancing] = useState(false);
+
+  // Baseline against the policy's CURRENT annual equivalent (latest
+  // committed MTA, or bound premium for the first MTA). Keeps
+  // sequential MTAs pricing against the right base.
+  const baselinePremium =
+    policy.versions[policy.versions.length - 1]?.afterAnnualEquivalent ??
+    quote.slipPremium ??
+    0;
+
+  // Apply any underwriter corrections to the displayed BEFORE/AFTER
+  // diff so the user sees the effect of their edits immediately.
+  const correctedMta = useMemo(() => {
+    const fx = getManchesterMtaRequest();
+    return {
+      ...fx,
+      newTurnover: mta.corrections.newTurnover ?? fx.newTurnover,
+      newSite: {
+        ...fx.newSite,
+        sqm: mta.corrections.newSiteSqm ?? fx.newSite.sqm,
+      },
+    };
+  }, [mta.corrections.newTurnover, mta.corrections.newSiteSqm]);
 
   const diff = useMemo(() => {
     if (!submission || !mta.request) return null;
     return buildPolicyContextDiff({
       submission,
-      mta: getManchesterMtaRequest(),
-      boundPremium: quote.slipPremium ?? 0,
+      mta: correctedMta,
+      boundPremium: baselinePremium,
     });
-  }, [submission, mta.request, quote.slipPremium]);
+  }, [submission, mta.request, correctedMta, baselinePremium]);
 
   if (!submission || !mta.request || !diff) return null;
   if (
@@ -68,6 +92,8 @@ export function PolicyContextReview() {
   }
 
   const allResolved = mta.gaps.every((g) => g.resolution !== null);
+  // The ceremony cannot proceed if downstream artefacts are stale.
+  const blockedByStale = mta.staleSince !== null;
 
   return (
     <motion.section
@@ -154,6 +180,10 @@ export function PolicyContextReview() {
         material gap — see warranty proposal below.
       </p>
 
+      <EditableTurnoverRow />
+
+      {mta.staleSince && <StaleBanner />}
+
       {pendingGap && <GapResolveCard gap={pendingGap} />}
 
       {allResolved && mta.phase === 'context-review' && (
@@ -172,12 +202,176 @@ export function PolicyContextReview() {
             disabled={advancing}
             onClick={advanceToDeltaRating}
           >
-            Run delta rating →
+            {blockedByStale ? 'Rerun delta rating →' : 'Run delta rating →'}
           </Button>
         </div>
       )}
     </motion.section>
   );
+}
+
+function StaleBanner() {
+  return (
+    <div
+      className="hairline"
+      style={{
+        marginTop: 14,
+        padding: '10px 14px',
+        borderRadius: 'var(--radius-button)',
+        background: 'var(--color-warn-bg)',
+        borderColor: 'transparent',
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: 10,
+      }}
+    >
+      <RotateCcw size={11} strokeWidth={1.5} style={{ color: 'var(--color-warn)', position: 'relative', top: 1 }} />
+      <span
+        className="mono"
+        style={{
+          fontSize: 9.5,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'var(--color-warn)',
+        }}
+      >
+        upstream changed · downstream stale
+      </span>
+      <span
+        className="serif"
+        style={{
+          fontStyle: 'italic',
+          fontSize: 12.5,
+          color: 'var(--color-warn)',
+          letterSpacing: '-0.005em',
+        }}
+      >
+        delta rating, capacity, and schedule must rerun before issue
+      </span>
+    </div>
+  );
+}
+
+function EditableTurnoverRow() {
+  const mta = useRanBerri((s) => s.mta);
+  const fixture = getManchesterMtaRequest();
+  const current = mta.corrections.newTurnover ?? fixture.newTurnover;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(current));
+  const [error, setError] = useState<string | null>(null);
+
+  function commit() {
+    setError(null);
+    const parsed = parseTurnover(draft);
+    if (parsed === null) {
+      setError('Enter a number, optionally suffixed with M (e.g. 15M)');
+      return;
+    }
+    if (parsed === current) {
+      setEditing(false);
+      return;
+    }
+    try {
+      applyMtaCorrection({
+        fieldKey: 'newTurnover',
+        nextValue: parsed,
+        reason: 'underwriter revised turnover projection during MTA review',
+        correctedBy: 'nm',
+      });
+      setEditing(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-2" style={{ marginTop: 10 }}>
+        <Pencil size={11} strokeWidth={1.5} style={{ color: 'var(--color-ink-mute)' }} />
+        <span
+          className="serif"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 12.5,
+            color: 'var(--color-ink-mute)',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          edit broker-stated turnover ({current.toLocaleString('en-GB', { maximumFractionDigits: 0 })}):
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(String(current));
+            setEditing(true);
+          }}
+          className="serif"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 12.5,
+            color: 'var(--color-accent)',
+            background: 'transparent',
+            border: 0,
+            padding: '2px 4px',
+            cursor: 'pointer',
+          }}
+        >
+          edit →
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2" style={{ marginTop: 10 }}>
+      <input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') setEditing(false);
+        }}
+        className="hairline"
+        style={{
+          width: 140,
+          padding: '4px 8px',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 12,
+          color: 'var(--color-ink)',
+          background: 'var(--color-bg)',
+          borderRadius: 'var(--radius-button)',
+        }}
+      />
+      <Button variant="primary" size="sm" onClick={commit}>
+        Apply
+      </Button>
+      <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+        Cancel
+      </Button>
+      {error && (
+        <span
+          className="serif"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 11.5,
+            color: 'var(--color-danger)',
+          }}
+        >
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function parseTurnover(s: string): number | null {
+  const trimmed = s.trim().replace(/[£,\s]/g, '');
+  const m = trimmed.match(/^(\d+(?:\.\d+)?)([Mm])?$/);
+  if (!m) return null;
+  const v = parseFloat(m[1]!);
+  if (Number.isNaN(v)) return null;
+  return m[2] ? Math.round(v * 1_000_000) : Math.round(v);
 }
 
 type ColumnProps = {

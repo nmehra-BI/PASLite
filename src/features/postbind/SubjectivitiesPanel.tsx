@@ -3,6 +3,7 @@ import {
   daysUntilCritical,
   subjectivityTypeLabel,
 } from '@/lib/fixtures/subjectivities';
+import { deriveCursorView } from '@/lib/lifecycle/cursorView';
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
@@ -16,11 +17,31 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
  * provenance.
  */
 export function SubjectivitiesPanel() {
-  const subjectivities = useRanBerri((s) => s.postBind.subjectivities);
+  const allSubjectivities = useRanBerri((s) => s.postBind.subjectivities);
   const setInspecting = useRanBerri((s) => s.setInspectingSubjectivity);
   const bind = useRanBerri((s) => s.bind);
+  const cursor = useRanBerri((s) => s.lifecycle.cursor);
+  const now = useRanBerri((s) => s.lifecycle.now);
+  const policy = useRanBerri((s) => s.policy);
 
-  if (bind.phase !== 'committed' || subjectivities.length === 0) return null;
+  if (bind.phase !== 'committed') return null;
+
+  // Filter the subjectivities to those existing at-or-before the
+  // cursor's effective time. In the historical 'bind-v1' view this
+  // hides MTA-created records; in the live view it's a no-op.
+  const view = deriveCursorView({
+    cursor,
+    now,
+    baseBindAt: policy.baseBindAt,
+    versionCount: policy.versions.length,
+    firstMtaSignedAt: policy.versions[0]?.signedAt ?? null,
+  });
+  const subjectivities =
+    view.effectiveAt !== null
+      ? allSubjectivities.filter((s) => s.createdAt < view.effectiveAt!)
+      : allSubjectivities;
+
+  if (subjectivities.length === 0) return null;
 
   return (
     <section
