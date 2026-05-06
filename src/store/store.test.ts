@@ -78,7 +78,7 @@ describe('applyCorrection — turnover £8.4M → £7.9M', () => {
     expect(effectiveValue(t)).toBe(7_900_000);
   });
 
-  it('invalidates only conflicts/rating/quote/recommendation — enrichment stays valid', () => {
+  it('invalidates the full closure (conflicts + triage + rating + quote + recommendation) — enrichment stays valid', () => {
     useRanBerri.getState().applyCorrection('insured.turnover', {
       value: 7_900_000,
       reason: 'Companies House FY24.',
@@ -89,6 +89,7 @@ describe('applyCorrection — turnover £8.4M → £7.9M', () => {
     const a = useRanBerri.getState().artifacts;
     expect(a.enrichment.computedAt).toBe('2026-05-06T08:31:00Z');
     expect(a.conflicts.computedAt).toBeNull();
+    expect(a.triage.computedAt).toBeNull();
     expect(a.rating.computedAt).toBeNull();
     expect(a.quote.computedAt).toBeNull();
     expect(a.recommendation.computedAt).toBeNull();
@@ -104,7 +105,8 @@ describe('applyCorrection — turnover £8.4M → £7.9M', () => {
     });
 
     const newEvents = useRanBerri.getState().auditLog.slice(before);
-    expect(newEvents).toHaveLength(5);
+    // 1 field.corrected + 5 artifact.stale (conflicts/triage/rating/quote/recommendation)
+    expect(newEvents).toHaveLength(6);
 
     const first = newEvents[0]!;
     expect(first.kind).toBe('field.corrected');
@@ -118,7 +120,7 @@ describe('applyCorrection — turnover £8.4M → £7.9M', () => {
       return e.artifact;
     });
     expect(new Set(staleArtifacts)).toEqual(
-      new Set(['conflicts', 'rating', 'quote', 'recommendation']),
+      new Set(['conflicts', 'triage', 'rating', 'quote', 'recommendation']),
     );
   });
 });

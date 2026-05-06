@@ -7,6 +7,7 @@ import {
   runExtraction,
   useIntake,
 } from '@/features/intake';
+import { TerminalBanner } from '@/features/triage';
 import { StalenessBanner } from '@/components';
 import { Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
@@ -53,6 +54,7 @@ function CanvasColumn() {
     >
       <CanvasSubject />
       <RibbonBand />
+      <TerminalBanner />
       <StalenessBanner />
       <CanvasBody />
     </main>

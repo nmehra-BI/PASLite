@@ -7,17 +7,24 @@ import {
 } from './graph';
 
 describe('affectedArtifacts', () => {
-  it('correcting turnover invalidates conflicts → rating → quote → recommendation, but not enrichment', () => {
+  it('correcting turnover invalidates conflicts + triage + rating + quote + recommendation, but not enrichment', () => {
     const result = affectedArtifacts('insured.turnover');
     expect(result).toEqual(
-      new Set(['conflicts', 'rating', 'quote', 'recommendation']),
+      new Set(['conflicts', 'triage', 'rating', 'quote', 'recommendation']),
     );
     expect(result.has('enrichment')).toBe(false);
   });
 
   it('correcting Companies House number invalidates enrichment and the full downstream closure', () => {
     expect(affectedArtifacts('insured.companiesHouseNumber')).toEqual(
-      new Set(['enrichment', 'conflicts', 'rating', 'quote', 'recommendation']),
+      new Set([
+        'enrichment',
+        'conflicts',
+        'triage',
+        'rating',
+        'quote',
+        'recommendation',
+      ]),
     );
   });
 
@@ -27,24 +34,37 @@ describe('affectedArtifacts', () => {
     );
   });
 
-  it('correcting a site sqm invalidates rating and downstream', () => {
+  it('correcting a site sqm invalidates triage + rating + downstream', () => {
     expect(affectedArtifacts('sites[0].sqm')).toEqual(
-      new Set(['rating', 'quote', 'recommendation']),
+      new Set(['triage', 'rating', 'quote', 'recommendation']),
     );
     expect(affectedArtifacts('sites[7].sqm')).toEqual(
-      new Set(['rating', 'quote', 'recommendation']),
+      new Set(['triage', 'rating', 'quote', 'recommendation']),
     );
   });
 
-  it('correcting a permit reference invalidates enrichment + conflicts + downstream', () => {
+  it('correcting a permit reference invalidates enrichment + conflicts + triage + downstream', () => {
     expect(affectedArtifacts('sites[0].permitRef')).toEqual(
-      new Set(['enrichment', 'conflicts', 'rating', 'quote', 'recommendation']),
+      new Set([
+        'enrichment',
+        'conflicts',
+        'triage',
+        'rating',
+        'quote',
+        'recommendation',
+      ]),
     );
   });
 
-  it('correcting lossRuns invalidates conflicts + rating + downstream', () => {
+  it('correcting lossRuns invalidates conflicts + downstream (cascades into triage via conflicts)', () => {
     expect(affectedArtifacts('lossRuns')).toEqual(
-      new Set(['conflicts', 'rating', 'quote', 'recommendation']),
+      new Set(['conflicts', 'triage', 'rating', 'quote', 'recommendation']),
+    );
+  });
+
+  it('correcting materials invalidates triage + rating + downstream', () => {
+    expect(affectedArtifacts('materials')).toEqual(
+      new Set(['triage', 'rating', 'quote', 'recommendation']),
     );
   });
 
@@ -60,11 +80,18 @@ describe('closure', () => {
     );
   });
 
+  it('triage closure is rating + quote + recommendation', () => {
+    expect(closure(['triage'])).toEqual(
+      new Set(['triage', 'rating', 'quote', 'recommendation']),
+    );
+  });
+
   it('handles a multi-seed input', () => {
     expect(closure(['enrichment', 'quote'])).toEqual(
       new Set([
         'enrichment',
         'conflicts',
+        'triage',
         'rating',
         'quote',
         'recommendation',

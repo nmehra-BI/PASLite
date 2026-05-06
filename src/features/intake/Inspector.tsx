@@ -7,6 +7,7 @@ import { effectiveValue, type Field } from '@/lib/field';
 import { getAtPath } from '@/lib/paths';
 import { isField } from '@/lib/deps';
 import { ENRICHMENT_SOURCES } from '@/lib/fixtures';
+import { useReadOnly } from '@/lib/readOnly';
 import { useIntake, type InspectorTarget } from './intakeStore';
 import { CorrectionInline } from './CorrectionInline';
 
@@ -93,6 +94,7 @@ function InspectorBody({
 
 function FieldInspector({ path, onClose }: { path: string; onClose: () => void }) {
   const submission = useRanBerri((s) => s.submission);
+  const readOnly = useReadOnly();
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -116,6 +118,7 @@ function FieldInspector({ path, onClose }: { path: string; onClose: () => void }
       <FieldHeader
         path={path}
         editing={editing}
+        readOnly={readOnly}
         onClose={onClose}
         onEdit={() => setEditing((e) => !e)}
       />
@@ -138,11 +141,13 @@ function FieldHeader({
   onClose,
   onEdit,
   editing,
+  readOnly = false,
 }: {
   path: string;
   onClose: () => void;
   onEdit: () => void;
   editing: boolean;
+  readOnly?: boolean;
 }) {
   return (
     <div
@@ -170,21 +175,23 @@ function FieldHeader({
         </span>
       </div>
       <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label="Correct this field"
-          className="inline-flex items-center gap-1"
-          style={{
-            padding: '4px 8px',
-            borderRadius: 'var(--radius-button)',
-            color: editing ? 'var(--color-accent)' : 'var(--color-ink-mute)',
-            fontSize: 11.5,
-          }}
-        >
-          <Pencil size={12} strokeWidth={1.5} />
-          <span>correct this</span>
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label="Correct this field"
+            className="inline-flex items-center gap-1"
+            style={{
+              padding: '4px 8px',
+              borderRadius: 'var(--radius-button)',
+              color: editing ? 'var(--color-accent)' : 'var(--color-ink-mute)',
+              fontSize: 11.5,
+            }}
+          >
+            <Pencil size={12} strokeWidth={1.5} />
+            <span>correct this</span>
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components';
 import { useRanBerri } from '@/store';
+import { useReadOnly } from '@/lib/readOnly';
 import type { GapRecord } from '@/store/replay';
 
 type Choice = 'present' | 'absent' | 'request';
@@ -19,11 +20,12 @@ const RECIPIENT = 's.whitfield@surestep.co.uk';
  */
 export function GapCard({ gap }: Props) {
   const resolveGap = useRanBerri((s) => s.resolveGap);
+  const readOnly = useReadOnly();
   const [choice, setChoice] = useState<Choice | null>(null);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const canSubmit = choice !== null && reason.trim().length >= 8;
+  const canSubmit = !readOnly && choice !== null && reason.trim().length >= 8;
 
   function handleResolve() {
     setError(null);

@@ -9,6 +9,7 @@ import { pathMatches } from '@/lib/paths';
 export type ArtifactKey =
   | 'enrichment'
   | 'conflicts'
+  | 'triage'
   | 'rating'
   | 'quote'
   | 'recommendation';
@@ -16,6 +17,7 @@ export type ArtifactKey =
 export const ALL_ARTIFACTS: readonly ArtifactKey[] = [
   'enrichment',
   'conflicts',
+  'triage',
   'rating',
   'quote',
   'recommendation',
@@ -61,7 +63,7 @@ export const DEPENDENCY_GRAPH: Record<ArtifactKey, Dependency> = {
       'sites[*].name',
       'sites[*].permitRef',
     ],
-    downstream: ['conflicts', 'rating', 'quote', 'recommendation'],
+    downstream: ['conflicts', 'triage', 'rating', 'quote', 'recommendation'],
   },
   conflicts: {
     sources: [
@@ -76,6 +78,21 @@ export const DEPENDENCY_GRAPH: Record<ArtifactKey, Dependency> = {
       'sites[*].permitExpiry',
       'lossRuns',
       'statedLossRatio',
+    ],
+    downstream: ['triage', 'rating', 'quote', 'recommendation'],
+  },
+  triage: {
+    /**
+     * Appetite + capacity inputs. Any change to these requires
+     * re-running the four checks against the current submission.
+     */
+    sources: [
+      'insured.turnover',
+      'insured.yearsTrading',
+      'sites[*].name',
+      'sites[*].sqm',
+      'materials',
+      'fireSuppressionDisclosed',
     ],
     downstream: ['rating', 'quote', 'recommendation'],
   },

@@ -4,6 +4,7 @@ import { SourceDocPreview } from './SourceDocPreview';
 import { ExtractedView } from './ExtractedView';
 import { Inspector } from './Inspector';
 import { EnrichmentSection } from '@/features/enrichment';
+import { TriageSection } from '@/features/triage';
 
 /**
  * The two-column composition that frames the cinematic extraction and,
@@ -69,6 +70,7 @@ export function ExtractionSequence() {
         ) : (
           <ExtractedView>
             <EnrichmentSection />
+            <TriageSection />
           </ExtractedView>
         )}
         <Inspector />

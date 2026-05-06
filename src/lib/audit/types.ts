@@ -194,6 +194,63 @@ export type AuditEvent = AuditEventBase &
          */
         correctedBy: string;
       }
+    // Triage phase (module 4)
+    | { kind: 'triage.started'; submissionId: string }
+    | {
+        kind: 'triage.checkEvaluated';
+        submissionId: string;
+        check: 'appetite' | 'capacity' | 'subjectivities' | 'sanctions';
+        outcome: 'pass' | 'refer' | 'decline';
+        rationale: string;
+        ruleIds: string[];
+        rules: Array<{
+          ruleId: string;
+          description: string;
+          passed: boolean;
+          testedValue?: string;
+        }>;
+        metadata?: unknown;
+      }
+    | {
+        kind: 'triage.completed';
+        submissionId: string;
+        verdict: 'pass' | 'refer' | 'decline';
+      }
+    | {
+        kind: 'triage.verdictChanged';
+        submissionId: string;
+        from: 'pass' | 'refer' | 'decline';
+        to: 'pass' | 'refer' | 'decline';
+        cause: string;
+      }
+    | { kind: 'triage.rerun'; submissionId: string }
+    | {
+        kind: 'triage.checkOverridden';
+        submissionId: string;
+        check: 'appetite' | 'capacity' | 'subjectivities' | 'sanctions';
+        from: 'pass' | 'refer' | 'decline';
+        to: 'pass' | 'refer' | 'decline';
+        reason: string;
+        overriddenBy: string;
+      }
+    | { kind: 'triage.passedToRating'; submissionId: string }
+    | {
+        kind: 'submission.referred';
+        submissionId: string;
+        reviewer: string;
+        urgency: 'today' | 'week' | 'next-available';
+        reason: string;
+        referredBy: string;
+      }
+    | { kind: 'submission.recalled'; submissionId: string; recalledBy: string }
+    | {
+        kind: 'submission.declined';
+        submissionId: string;
+        reasonCategory: string;
+        detail: string;
+        notifyBroker: boolean;
+        declinedBy: string;
+      }
     | { kind: 'rating.computed'; submissionId: string; premium: number }
     | { kind: 'quote.issued'; submissionId: string; quoteRef: string }
     | {

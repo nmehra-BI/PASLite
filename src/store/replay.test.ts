@@ -428,6 +428,101 @@ describe('replay', () => {
     expect(c.resolution?.choice).toBe('external');
   });
 
+  it('reconstructs triage state + submission lifecycle from the log', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      ...fullExtractionEvents(),
+      {
+        id: id(),
+        at: '2026-05-09T08:20:00Z',
+        actor: { kind: 'system' },
+        kind: 'triage.started',
+        submissionId: SUB_ID,
+      },
+      {
+        id: id(),
+        at: '2026-05-09T08:20:01Z',
+        actor: { kind: 'system' },
+        kind: 'triage.checkEvaluated',
+        submissionId: SUB_ID,
+        check: 'appetite',
+        outcome: 'pass',
+        rationale: '6 of 6 rules met.',
+        ruleIds: ['APP-001', 'APP-006'],
+        rules: [],
+      },
+      {
+        id: id(),
+        at: '2026-05-09T08:20:02Z',
+        actor: { kind: 'system' },
+        kind: 'triage.completed',
+        submissionId: SUB_ID,
+        verdict: 'pass',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T08:21:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'triage.checkOverridden',
+        submissionId: SUB_ID,
+        check: 'appetite',
+        from: 'pass',
+        to: 'refer',
+        reason: 'see broker note attached',
+        overriddenBy: 'nm',
+      },
+    ];
+    const r = replay(events);
+    expect(r.triage.phase).toBe('settled');
+    expect(r.triage.checks).toHaveLength(1);
+    expect(r.triage.checks[0]!.id).toBe('appetite');
+    expect(r.triage.checks[0]!.override?.outcome).toBe('refer');
+    expect(r.triage.verdict).toBe('pass'); // snapshot at completed
+    expect(r.submissionState).toBe('active');
+  });
+
+  it('submission.referred sets the lifecycle state and referral record', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T09:00:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'submission.referred',
+        submissionId: SUB_ID,
+        reviewer: 'Sarah Patel',
+        urgency: 'week',
+        reason: 'edge case on rule APP-003.',
+        referredBy: 'nm',
+      },
+    ];
+    const r = replay(events);
+    expect(r.submissionState).toBe('referred');
+    expect(r.referral?.reviewer).toBe('Sarah Patel');
+    expect(r.referral?.urgency).toBe('week');
+  });
+
+  it('submission.declined sets state + decline record', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T09:24:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'submission.declined',
+        submissionId: SUB_ID,
+        reasonCategory: 'outside-appetite',
+        detail: 'turnover above cap.',
+        notifyBroker: true,
+        declinedBy: 'nm',
+      },
+    ];
+    const r = replay(events);
+    expect(r.submissionState).toBe('declined');
+    expect(r.decline?.reasonCategory).toBe('outside-appetite');
+    expect(r.decline?.notifyBroker).toBe(true);
+  });
+
   it('artifact.computed clears staleSince', () => {
     const events: AuditEvent[] = [
       {

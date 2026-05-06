@@ -48,3 +48,10 @@ export type {
   SourceResult,
   SourceVerdict,
 } from './enrichmentSources';
+
+export {
+  capacityHeadroom,
+  capacityHeadroomPct,
+  getCapacityLedger,
+} from './capacityLedger';
+export type { CapacityLedger } from './capacityLedger';

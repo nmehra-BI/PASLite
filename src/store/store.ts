@@ -16,10 +16,15 @@ import {
   applyExtraction,
   freshArtifacts,
   freshEnrichment,
+  freshTriage,
   replay,
   type ArtifactState,
+  type DeclineRecord,
   type EnrichmentReplayState,
+  type ReferralRecord,
   type SourceStatus,
+  type SubmissionLifecycleState,
+  type TriageReplayState,
 } from './replay';
 
 /**
@@ -54,6 +59,10 @@ export type RanBerriState = {
   auditLog: AuditEvent[];
   artifacts: Record<ArtifactKey, ArtifactState>;
   enrichment: EnrichmentReplayState;
+  triage: TriageReplayState;
+  submissionState: SubmissionLifecycleState;
+  referral: ReferralRecord | null;
+  decline: DeclineRecord | null;
   lifecycle: {
     cursor: LifecycleMilestone;
     now: LifecycleMilestone;
@@ -124,6 +133,39 @@ export type RanBerriState = {
     recipient?: string;
   }) => void;
 
+  /**
+   * Override a triage check outcome with a recorded reason.
+   */
+  overrideTriageCheck: (input: {
+    check: 'appetite' | 'capacity' | 'subjectivities' | 'sanctions';
+    from: 'pass' | 'refer' | 'decline';
+    to: 'pass' | 'refer' | 'decline';
+    reason: string;
+    overriddenBy: string;
+  }) => void;
+
+  /** Advance submission to rating-pending. */
+  proceedToRating: () => void;
+
+  /** Move the submission into referred state. */
+  referToSenior: (input: {
+    reviewer: string;
+    urgency: 'today' | 'week' | 'next-available';
+    reason: string;
+    referredBy: string;
+  }) => void;
+
+  /** Recall a referred submission (placeholder for v0.2). */
+  recallReferral: (recalledBy: string) => void;
+
+  /** Move the submission into declined state and trigger module 7 placeholder. */
+  declineSubmission: (input: {
+    reasonCategory: string;
+    detail: string;
+    notifyBroker: boolean;
+    declinedBy: string;
+  }) => void;
+
   scrubLifecycle: (milestone: LifecycleMilestone) => void;
   setCanvasMode: (mode: 'closed' | 'compact' | 'expanded') => void;
   reset: () => void;
@@ -172,6 +214,10 @@ export const useRanBerri = create<RanBerriState>()(
       auditLog: [],
       artifacts: freshArtifacts(),
       enrichment: freshEnrichment(),
+      triage: freshTriage(),
+      submissionState: 'active',
+      referral: null,
+      decline: null,
       lifecycle: { cursor: 'quote', now: 'quote' },
       ui: { canvasMode: 'compact' },
 
@@ -380,6 +426,116 @@ export const useRanBerri = create<RanBerriState>()(
         });
       },
 
+      overrideTriageCheck: (input) => {
+        const submission = get().submission;
+        if (!submission) {
+          throw new Error('overrideTriageCheck: no active submission');
+        }
+        if (get().submissionState !== 'active') {
+          throw new Error('overrideTriageCheck: submission is read-only');
+        }
+        const submissionId = submission.id;
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: input.overriddenBy },
+          kind: 'triage.checkOverridden',
+          submissionId,
+          check: input.check,
+          from: input.from,
+          to: input.to,
+          reason: input.reason,
+          overriddenBy: input.overriddenBy,
+        });
+
+        // The verdict may have changed as a result of the override.
+        const next = computeVerdictFromState(get());
+        const prev = get().triage.verdict;
+        if (prev && next && prev !== next) {
+          get().appendAuditEvent({
+            actor: { kind: 'system' },
+            kind: 'triage.verdictChanged',
+            submissionId,
+            from: prev,
+            to: next,
+            cause: `${input.check} overridden ${input.from} → ${input.to}`,
+          });
+        }
+      },
+
+      proceedToRating: () => {
+        const submission = get().submission;
+        if (!submission) {
+          throw new Error('proceedToRating: no active submission');
+        }
+        if (get().submissionState !== 'active') {
+          throw new Error('proceedToRating: submission is read-only');
+        }
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: 'nm' },
+          kind: 'triage.passedToRating',
+          submissionId: submission.id,
+        });
+      },
+
+      referToSenior: (input) => {
+        const submission = get().submission;
+        if (!submission) {
+          throw new Error('referToSenior: no active submission');
+        }
+        if (get().submissionState !== 'active') {
+          throw new Error('referToSenior: submission is read-only');
+        }
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: input.referredBy },
+          kind: 'submission.referred',
+          submissionId: submission.id,
+          reviewer: input.reviewer,
+          urgency: input.urgency,
+          reason: input.reason,
+          referredBy: input.referredBy,
+        });
+      },
+
+      recallReferral: (recalledBy) => {
+        const submission = get().submission;
+        if (!submission) return;
+        if (get().submissionState !== 'referred') return;
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: recalledBy },
+          kind: 'submission.recalled',
+          submissionId: submission.id,
+          recalledBy,
+        });
+      },
+
+      declineSubmission: (input) => {
+        const submission = get().submission;
+        if (!submission) {
+          throw new Error('declineSubmission: no active submission');
+        }
+        if (get().submissionState !== 'active') {
+          throw new Error('declineSubmission: submission is read-only');
+        }
+        get().appendAuditEvent({
+          actor: { kind: 'underwriter', id: input.declinedBy },
+          kind: 'submission.declined',
+          submissionId: submission.id,
+          reasonCategory: input.reasonCategory,
+          detail: input.detail,
+          notifyBroker: input.notifyBroker,
+          declinedBy: input.declinedBy,
+        });
+        // Module 7 placeholder: NTU loss-capture flow lands here.
+        // For MVP we just emit a console marker so the wiring is
+        // visible in the demo.
+        if (typeof console !== 'undefined') {
+          // eslint-disable-next-line no-console
+          console.info(
+            '[module 7 placeholder] Decline recorded — NTU loss-capture would now run.',
+            { submissionId: submission.id, reasonCategory: input.reasonCategory },
+          );
+        }
+      },
+
       scrubLifecycle: (milestone) =>
         set((s) => {
           s.lifecycle.cursor = milestone;
@@ -396,6 +552,10 @@ export const useRanBerri = create<RanBerriState>()(
           s.auditLog = [];
           s.artifacts = freshArtifacts();
           s.enrichment = freshEnrichment();
+          s.triage = freshTriage();
+          s.submissionState = 'active';
+          s.referral = null;
+          s.decline = null;
           s.lifecycle = { cursor: 'quote', now: 'quote' };
           s.ui = { canvasMode: 'compact' };
         }),
@@ -414,10 +574,14 @@ export const useRanBerri = create<RanBerriState>()(
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Partial<RanBerriState>) };
         if (merged.auditLog && merged.auditLog.length > 0) {
-          const { submission, artifacts, enrichment } = replay(merged.auditLog);
-          merged.submission = submission;
-          merged.artifacts = artifacts;
-          merged.enrichment = enrichment;
+          const result = replay(merged.auditLog);
+          merged.submission = result.submission;
+          merged.artifacts = result.artifacts;
+          merged.enrichment = result.enrichment;
+          merged.triage = result.triage;
+          merged.submissionState = result.submissionState;
+          merged.referral = result.referral;
+          merged.decline = result.decline;
         }
         return merged;
       },
@@ -619,9 +783,117 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
       }
       break;
 
+    // ---------- triage ----------
+
+    case 'triage.started':
+      s.triage.phase = 'evaluating';
+      s.triage.checks = [];
+      s.triage.lastVerdictChange = null;
+      break;
+
+    case 'triage.checkEvaluated': {
+      const idx = s.triage.checks.findIndex((c) => c.id === e.check);
+      const next = {
+        id: e.check,
+        outcome: e.outcome,
+        rationale: e.rationale,
+        ruleIds: e.ruleIds,
+        rules: e.rules,
+        evaluatedAt: e.at,
+        metadata: e.metadata,
+        override: idx >= 0 ? s.triage.checks[idx]!.override : null,
+      };
+      if (idx >= 0) s.triage.checks[idx] = next;
+      else s.triage.checks.push(next);
+      break;
+    }
+
+    case 'triage.completed':
+      s.triage.phase = 'settled';
+      s.triage.completedAt = e.at;
+      s.triage.verdict = e.verdict;
+      break;
+
+    case 'triage.verdictChanged':
+      s.triage.lastVerdictChange = { from: e.from, to: e.to, cause: e.cause };
+      break;
+
+    case 'triage.rerun':
+      s.triage.phase = 'idle';
+      s.triage.checks = [];
+      s.triage.verdict = null;
+      s.triage.lastVerdictChange = null;
+      break;
+
+    case 'triage.checkOverridden': {
+      const idx = s.triage.checks.findIndex((c) => c.id === e.check);
+      if (idx >= 0) {
+        s.triage.checks[idx]!.override = {
+          outcome: e.to,
+          reason: e.reason,
+          overriddenBy: e.overriddenBy,
+          overriddenAt: e.at,
+        };
+      }
+      break;
+    }
+
+    case 'triage.passedToRating':
+      s.submissionState = 'rating-pending';
+      break;
+
+    case 'submission.referred':
+      s.submissionState = 'referred';
+      s.referral = {
+        reviewer: e.reviewer,
+        urgency: e.urgency,
+        reason: e.reason,
+        referredBy: e.referredBy,
+        referredAt: e.at,
+        recalledAt: null,
+        recalledBy: null,
+      };
+      break;
+
+    case 'submission.recalled':
+      if (s.referral) {
+        s.referral.recalledAt = e.at;
+        s.referral.recalledBy = e.recalledBy;
+      }
+      s.submissionState = 'active';
+      break;
+
+    case 'submission.declined':
+      s.submissionState = 'declined';
+      s.decline = {
+        reasonCategory: e.reasonCategory,
+        detail: e.detail,
+        notifyBroker: e.notifyBroker,
+        declinedBy: e.declinedBy,
+        declinedAt: e.at,
+      };
+      break;
+
     default:
       break;
   }
+}
+
+/**
+ * Re-derive the triage verdict from the current materialised checks
+ * (taking overrides into account). Used by overrideTriageCheck to
+ * detect when the verdict should change.
+ */
+function computeVerdictFromState(
+  state: Pick<RanBerriState, 'triage'>,
+): 'pass' | 'refer' | 'decline' | null {
+  if (state.triage.checks.length === 0) return null;
+  const effectives = state.triage.checks.map(
+    (c) => c.override?.outcome ?? c.outcome,
+  );
+  if (effectives.includes('decline')) return 'decline';
+  if (effectives.includes('refer')) return 'refer';
+  return 'pass';
 }
 
 function isKnownArtifact(s: string): s is ArtifactKey {

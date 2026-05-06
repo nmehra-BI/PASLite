@@ -3,6 +3,7 @@ import { useRanBerri } from '@/store';
 import { Button } from '@/components';
 import type { Field } from '@/lib/field';
 import { effectiveValue } from '@/lib/field';
+import { useReadOnly } from '@/lib/readOnly';
 
 type Props = {
   path: string;
@@ -24,16 +25,21 @@ type Props = {
  */
 export function CorrectionInline({ path, field, onSaved, onCancel }: Props) {
   const apply = useRanBerri((s) => s.applyCorrection);
+  const readOnly = useReadOnly();
   const current = effectiveValue(field);
 
   const initial = formatPrimitive(current);
-  const editable = canEdit(current);
+  const editable = canEdit(current) && !readOnly;
   const [value, setValue] = useState(initial);
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   function handleSave() {
     setError(null);
+    if (readOnly) {
+      setError('Submission is read-only.');
+      return;
+    }
     if (!editable) {
       setError('This field is not editable inline in module 2.');
       return;

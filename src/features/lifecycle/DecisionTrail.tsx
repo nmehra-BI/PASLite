@@ -25,6 +25,16 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'gap.dismissed': 'Gap closed',
   'gap.requestSent': 'Broker request queued',
   'field.corrected': 'Field corrected',
+  'triage.started': 'Triage started',
+  'triage.checkEvaluated': 'Triage check evaluated',
+  'triage.completed': 'Triage completed',
+  'triage.verdictChanged': 'Verdict changed',
+  'triage.rerun': 'Triage rerun',
+  'triage.checkOverridden': 'Triage check overridden',
+  'triage.passedToRating': 'Passed to rating',
+  'submission.referred': 'Submission referred',
+  'submission.recalled': 'Submission recalled',
+  'submission.declined': 'Submission declined',
   'rating.computed': 'Rating computed',
   'quote.issued': 'Quote issued',
   'recommendation.generated': 'Recommendation generated',
@@ -36,6 +46,7 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {
   enrichment: 'Enrichment',
   conflicts: 'Conflicts',
+  triage: 'Triage',
   rating: 'Rating',
   quote: 'Quote',
   recommendation: 'Recommendation',
@@ -61,15 +72,19 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'gap.detected' ||
     kind === 'conflict.flagged' ||
     kind === 'conflict.detected' ||
-    kind === 'artifact.stale'
+    kind === 'artifact.stale' ||
+    kind === 'triage.verdictChanged' ||
+    kind === 'submission.referred'
   )
     return 'var(--color-warn)';
   if (
     kind === 'field.corrected' ||
     kind === 'conflict.resolved' ||
-    kind === 'gap.resolved'
+    kind === 'gap.resolved' ||
+    kind === 'triage.checkOverridden'
   )
     return 'var(--color-accent)';
+  if (kind === 'submission.declined') return 'var(--color-danger)';
   if (
     kind === 'extraction.completed' ||
     kind === 'enrichment.completed' ||
@@ -77,7 +92,9 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'quote.issued' ||
     kind === 'artifact.computed' ||
     kind === 'conflict.dismissed' ||
-    kind === 'gap.dismissed'
+    kind === 'gap.dismissed' ||
+    kind === 'triage.completed' ||
+    kind === 'triage.passedToRating'
   )
     return 'var(--color-success)';
   return 'var(--color-ink)';
@@ -98,14 +115,15 @@ type EventEntry = {
 
 function aggregate(log: AuditEvent[]): EventEntry[] {
   // Hide noise-y replay-only events. The cinematic emits one query+return
-  // per source, but the user-facing rail summarises the whole pass via
-  // enrichment.completed.
+  // per source and one event per check, but the user-facing rail
+  // summarises the whole pass via the *.completed events.
   const filtered = log.filter(
     (e) =>
       e.kind !== 'extraction.fieldExtracted' &&
       e.kind !== 'submission.created' &&
       e.kind !== 'enrichment.sourceQueried' &&
-      e.kind !== 'enrichment.sourceReturned',
+      e.kind !== 'enrichment.sourceReturned' &&
+      e.kind !== 'triage.checkEvaluated',
   );
   return filtered.map((event) => {
     if (event.kind === 'extraction.completed') {
@@ -186,6 +204,42 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
         kind: 'event',
         event,
         subtitle: `${event.preservedResolutions} resolutions preserved`,
+      };
+    }
+    if (event.kind === 'triage.completed') {
+      const passed = event.verdict === 'pass';
+      return {
+        kind: 'event',
+        event,
+        subtitle: passed ? 'verdict: clear to rate' : `verdict: ${event.verdict}`,
+      };
+    }
+    if (event.kind === 'triage.verdictChanged') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.from} → ${event.to} · ${event.cause}`,
+      };
+    }
+    if (event.kind === 'triage.checkOverridden') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `${event.check} · ${event.from} → ${event.to}`,
+      };
+    }
+    if (event.kind === 'submission.referred') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: `to ${event.reviewer} · ${event.urgency}`,
+      };
+    }
+    if (event.kind === 'submission.declined') {
+      return {
+        kind: 'event',
+        event,
+        subtitle: event.reasonCategory,
       };
     }
     return { kind: 'event', event };

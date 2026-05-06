@@ -104,17 +104,99 @@ export type EnrichmentReplayState = {
   gapCountAtSettle: number;
 };
 
+// ---------- triage-derived state ----------
+
+export type TriageCheckId =
+  | 'appetite'
+  | 'capacity'
+  | 'subjectivities'
+  | 'sanctions';
+
+export type TriageOutcome = 'pass' | 'refer' | 'decline';
+
+export type TriageCheckRecord = {
+  id: TriageCheckId;
+  outcome: TriageOutcome;
+  rationale: string;
+  ruleIds: string[];
+  rules: Array<{
+    ruleId: string;
+    description: string;
+    passed: boolean;
+    testedValue?: string;
+  }>;
+  evaluatedAt: string;
+  metadata?: unknown;
+  override: {
+    outcome: TriageOutcome;
+    reason: string;
+    overriddenBy: string;
+    overriddenAt: string;
+  } | null;
+};
+
+export type TriageReplayState = {
+  phase: 'idle' | 'evaluating' | 'settled';
+  checks: TriageCheckRecord[];
+  /** Overall verdict at last `triage.completed`. */
+  verdict: TriageOutcome | null;
+  completedAt: string | null;
+  /** Set when the most recent `triage.completed` differs from the previous. */
+  lastVerdictChange: { from: TriageOutcome; to: TriageOutcome; cause: string } | null;
+};
+
+export function freshTriage(): TriageReplayState {
+  return {
+    phase: 'idle',
+    checks: [],
+    verdict: null,
+    completedAt: null,
+    lastVerdictChange: null,
+  };
+}
+
+// ---------- submission lifecycle state ----------
+
+export type SubmissionLifecycleState =
+  | 'active'
+  | 'rating-pending'
+  | 'referred'
+  | 'declined';
+
+export type ReferralRecord = {
+  reviewer: string;
+  urgency: 'today' | 'week' | 'next-available';
+  reason: string;
+  referredBy: string;
+  referredAt: string;
+  recalledAt: string | null;
+  recalledBy: string | null;
+};
+
+export type DeclineRecord = {
+  reasonCategory: string;
+  detail: string;
+  notifyBroker: boolean;
+  declinedBy: string;
+  declinedAt: string;
+};
+
 export type ReplayResult = {
   submission: Submission | null;
   artifacts: Record<ArtifactKey, ArtifactState>;
   intake: IntakeReplayState;
   enrichment: EnrichmentReplayState;
+  triage: TriageReplayState;
+  submissionState: SubmissionLifecycleState;
+  referral: ReferralRecord | null;
+  decline: DeclineRecord | null;
 };
 
 export function freshArtifacts(): Record<ArtifactKey, ArtifactState> {
   return {
     enrichment: { computedAt: null, staleSince: null },
     conflicts: { computedAt: null, staleSince: null },
+    triage: { computedAt: null, staleSince: null },
     rating: { computedAt: null, staleSince: null },
     quote: { computedAt: null, staleSince: null },
     recommendation: { computedAt: null, staleSince: null },
@@ -124,6 +206,7 @@ export function freshArtifacts(): Record<ArtifactKey, ArtifactState> {
 const ALL_ARTIFACTS: readonly ArtifactKey[] = [
   'enrichment',
   'conflicts',
+  'triage',
   'rating',
   'quote',
   'recommendation',
@@ -155,6 +238,10 @@ export function replay(events: AuditEvent[]): ReplayResult {
   const artifacts = freshArtifacts();
   const intake = freshIntake();
   const enrichment = freshEnrichment();
+  const triage = freshTriage();
+  let submissionState: SubmissionLifecycleState = 'active';
+  let referral: ReferralRecord | null = null;
+  let decline: DeclineRecord | null = null;
 
   for (const e of events) {
     switch (e.kind) {
@@ -388,6 +475,105 @@ export function replay(events: AuditEvent[]): ReplayResult {
         }
         break;
 
+      // ---------- triage ----------
+
+      case 'triage.started':
+        triage.phase = 'evaluating';
+        triage.checks = [];
+        triage.lastVerdictChange = null;
+        break;
+
+      case 'triage.checkEvaluated': {
+        const idx = triage.checks.findIndex((c) => c.id === e.check);
+        const next: TriageCheckRecord = {
+          id: e.check,
+          outcome: e.outcome,
+          rationale: e.rationale,
+          ruleIds: e.ruleIds,
+          rules: e.rules,
+          evaluatedAt: e.at,
+          metadata: e.metadata,
+          override: idx >= 0 ? triage.checks[idx]!.override : null,
+        };
+        if (idx >= 0) triage.checks[idx] = next;
+        else triage.checks.push(next);
+        break;
+      }
+
+      case 'triage.completed':
+        triage.phase = 'settled';
+        triage.completedAt = e.at;
+        triage.verdict = e.verdict;
+        break;
+
+      case 'triage.verdictChanged':
+        triage.lastVerdictChange = { from: e.from, to: e.to, cause: e.cause };
+        break;
+
+      case 'triage.rerun':
+        triage.phase = 'idle';
+        triage.checks = [];
+        triage.verdict = null;
+        triage.lastVerdictChange = null;
+        break;
+
+      case 'triage.checkOverridden': {
+        const idx = triage.checks.findIndex((c) => c.id === e.check);
+        if (idx >= 0) {
+          triage.checks[idx]!.override = {
+            outcome: e.to,
+            reason: e.reason,
+            overriddenBy: e.overriddenBy,
+            overriddenAt: e.at,
+          };
+        }
+        break;
+      }
+
+      case 'triage.passedToRating':
+        submissionState = 'rating-pending';
+        break;
+
+      case 'submission.referred':
+        submissionState = 'referred';
+        referral = {
+          reviewer: e.reviewer,
+          urgency: e.urgency,
+          reason: e.reason,
+          referredBy: e.referredBy,
+          referredAt: e.at,
+          recalledAt: null,
+          recalledBy: null,
+        };
+        break;
+
+      case 'submission.recalled':
+        if (referral !== null) {
+          const prev: ReferralRecord = referral;
+          referral = {
+            reviewer: prev.reviewer,
+            urgency: prev.urgency,
+            reason: prev.reason,
+            referredBy: prev.referredBy,
+            referredAt: prev.referredAt,
+            recalledAt: e.at,
+            recalledBy: e.recalledBy,
+          };
+        }
+        submissionState = 'active';
+        break;
+
+      case 'submission.declined':
+        submissionState = 'declined';
+        decline = {
+          reasonCategory: e.reasonCategory,
+          detail: e.detail,
+          notifyBroker: e.notifyBroker,
+          declinedBy: e.declinedBy,
+          declinedAt: e.at,
+        };
+        break;
+
       // Pass-through:
       case 'submission.received':
       case 'gap.flagged':
@@ -400,7 +586,16 @@ export function replay(events: AuditEvent[]): ReplayResult {
     }
   }
 
-  return { submission, artifacts, intake, enrichment };
+  return {
+    submission,
+    artifacts,
+    intake,
+    enrichment,
+    triage,
+    submissionState,
+    referral,
+    decline,
+  };
 }
 
 function isArtifactKey(s: string): s is ArtifactKey {

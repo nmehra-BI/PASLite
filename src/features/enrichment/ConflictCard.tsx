@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components';
 import { useRanBerri } from '@/store';
+import { useReadOnly } from '@/lib/readOnly';
 import type { ConflictRecord } from '@/store/replay';
 
 type Choice = 'broker' | 'external' | 'custom';
@@ -32,6 +33,7 @@ const formatGBP = (v: unknown) =>
  */
 export function ConflictCard({ conflict, editing = false, onClose }: Props) {
   const resolveConflict = useRanBerri((s) => s.resolveConflict);
+  const readOnly = useReadOnly();
   const existing = editing ? conflict.resolution : null;
   const [choice, setChoice] = useState<Choice | null>(existing?.choice ?? null);
   const [reason, setReason] = useState(existing?.reason ?? '');
@@ -43,6 +45,7 @@ export function ConflictCard({ conflict, editing = false, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const canSubmit =
+    !readOnly &&
     choice !== null &&
     reason.trim().length >= 8 &&
     (choice !== 'custom' || parseCustomNumber(customValue) !== null);

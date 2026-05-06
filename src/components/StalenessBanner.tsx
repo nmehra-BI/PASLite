@@ -5,6 +5,7 @@ import { ALL_ARTIFACTS, affectedArtifacts, type ArtifactKey } from '@/lib/deps';
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {
   enrichment: 'Enrichment',
   conflicts: 'Conflicts',
+  triage: 'Triage',
   rating: 'Rating',
   quote: 'Quote',
   recommendation: 'Recommendation',

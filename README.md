@@ -128,6 +128,38 @@ the human disagreed.
   detail), source (raw payload + latency + refreshed-at), or conflict
   (detection metadata + resolution history).
 
+### Module 4 — triage (appetite + capacity gate)
+
+- **Four rules-based checks** (`src/lib/appetite/`): APP-001..006
+  (line-of-business, jurisdiction, turnover band, site count, excluded
+  materials, CH status), CAP-001/002 (capacity fit and margin),
+  SUB-001/002 (required disclosures), SAN-001/002 (sanctions clean).
+  Pure functions; the model surfaces the rule but never overrides it.
+- **Cinematic** auto-fires after enrichment settles AND
+  reconciliation is complete. Each check resolves on a 300ms stagger
+  with its rule citation, rationale, and outcome glyph.
+- **3-column conflict pattern** is reused for the rules: each row
+  expands to a detail card with the full rule list, marginalia, and
+  optional capacity gauge (animated fill on first render).
+- **Override flow**: any check can be overridden with a recorded
+  reason; overrides stay alongside the original outcome in the audit
+  log. Verdict re-derives in the panel, surfacing a "PASS → REFER"
+  notice when the override or a rerun changes the outcome.
+- **Three terminal actions** with hierarchy by verdict: Proceed to
+  rating (primary on PASS), Refer to senior (primary on REFER, opens
+  modal with reviewer + urgency + reason), Decline (primary on
+  DECLINE, opens modal with category + detail + optional broker NTQ).
+  Decline triggers a module-7 placeholder (`console.info`) for the
+  NTU loss-capture flow.
+- **Read-only enforcement**: once referred or declined, the canvas
+  surfaces a banner at the top, every correction / resolution /
+  override Save is disabled, and the store actions reject mutations.
+  Lifecycle ribbon, decision trail and inspectors stay live for
+  historical review.
+- **Stale propagation**: triage joins the dep graph between conflicts
+  and rating; any upstream change marks it stale and surfaces *rerun
+  triage* in the section header.
+
 ## What&rsquo;s planned
 
 - **Module 2** &mdash; submission intake &amp; field extraction
