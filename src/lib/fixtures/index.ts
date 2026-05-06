@@ -62,3 +62,14 @@ export { getLossesToCompetitors } from './lossesToCompetitors';
 export type { LossToCompetitor } from './lossesToCompetitors';
 export { getCompetitiveIntel } from './competitiveIntel';
 export type { CompetitorProfile } from './competitiveIntel';
+export {
+  MANCHESTER_MTA,
+  getManchesterMtaRequest,
+  getMtaExtractionSchedule,
+} from './mtaRequest';
+export type {
+  MtaChangeType,
+  MtaExtractionStep,
+  MtaNewSite,
+  MtaRequest,
+} from './mtaRequest';

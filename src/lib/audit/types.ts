@@ -489,6 +489,124 @@ export type AuditEvent = AuditEventBase &
         replayedBy: string;
         targetAt: ISO8601;
       }
+
+    // MTA / endorsement (module 9)
+    | {
+        kind: 'mta.requestReceived';
+        submissionId: string;
+        mtaId: string;
+        broker: string;
+        subject: string;
+        effectiveDate: ISO8601;
+        changeType:
+          | 'add-site'
+          | 'remove-site'
+          | 'turnover-change'
+          | 'coverage-change'
+          | 'warranty-change'
+          | 'permit-update'
+          | 'multi-change';
+      }
+    | {
+        kind: 'mta.extracted';
+        submissionId: string;
+        mtaId: string;
+        fields: Record<string, unknown>;
+        avgConfidence: number;
+        fieldCount: number;
+      }
+    | {
+        kind: 'mta.gapFlagged';
+        submissionId: string;
+        mtaId: string;
+        gapId: string;
+        description: string;
+      }
+    | {
+        kind: 'mta.gapResolved';
+        submissionId: string;
+        mtaId: string;
+        gapId: string;
+        choice: 'conditional' | 'wait' | 'decline';
+        reason: string;
+        resolvedBy: string;
+      }
+    | {
+        kind: 'mta.deltaRated';
+        submissionId: string;
+        mtaId: string;
+        beforePremium: number;
+        afterAnnualEquivalent: number;
+        annualDelta: number;
+        daysRemaining: number;
+        daysInTerm: number;
+        proRatedAP: number;
+        sha: string;
+      }
+    | {
+        kind: 'mta.capacityRechecked';
+        submissionId: string;
+        mtaId: string;
+        deltaConsumption: number;
+        newTotalConsumption: number;
+        sufficient: boolean;
+      }
+    | {
+        kind: 'mta.scheduleGenerated';
+        submissionId: string;
+        mtaId: string;
+        scheduleRef: string;
+        endorsementNote: string;
+        addedWarranty: string | null;
+      }
+    | {
+        kind: 'mta.scheduleEdited';
+        submissionId: string;
+        mtaId: string;
+        fieldKey: string;
+        previousValue: string;
+        nextValue: string;
+        editedBy: string;
+      }
+    | {
+        kind: 'mta.hashConfirmed';
+        submissionId: string;
+        mtaId: string;
+        hashId: 'delta-premium' | 'capacity-update';
+        artefactSha: string;
+        confirmedBy: string;
+      }
+    | {
+        kind: 'mta.hashOverridden';
+        submissionId: string;
+        mtaId: string;
+        hashId: 'delta-premium' | 'capacity-update';
+        expectedSha: string;
+        currentSha: string;
+        reason: string;
+        overriddenBy: string;
+      }
+    | {
+        kind: 'mta.committed';
+        submissionId: string;
+        mtaId: string;
+        scheduleRef: string;
+        endorsementNumber: number;
+        proRatedAP: number;
+        afterAnnualEquivalent: number;
+        effectiveDate: ISO8601;
+        signedBy: string;
+        hashes: Array<{ id: string; sha: string; confirmedAt: ISO8601 }>;
+      }
+    | {
+        kind: 'mta.scheduleSent';
+        submissionId: string;
+        mtaId: string;
+        scheduleRef: string;
+        recipient: string;
+        coveringNote: string;
+        sentBy: string;
+      }
   );
 
 export type AuditEventKind = AuditEvent['kind'];

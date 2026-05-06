@@ -6,7 +6,8 @@ export type AuditFilterKey =
   | 'corrections'
   | 'resolutions'
   | 'hashes'
-  | 'bind';
+  | 'bind'
+  | 'mta';
 
 const FILTER_LABELS: Array<{ key: AuditFilterKey; label: string }> = [
   { key: 'all', label: 'all events' },
@@ -15,6 +16,7 @@ const FILTER_LABELS: Array<{ key: AuditFilterKey; label: string }> = [
   { key: 'resolutions', label: 'resolutions' },
   { key: 'hashes', label: 'hashes' },
   { key: 'bind', label: 'bind events' },
+  { key: 'mta', label: 'mta events' },
 ];
 
 export function eventMatchesFilter(
@@ -43,10 +45,13 @@ export function eventMatchesFilter(
     return (
       kind === 'bind.hashConfirmed' ||
       kind === 'bind.hashFailed' ||
-      kind === 'bind.hashOverridden'
+      kind === 'bind.hashOverridden' ||
+      kind === 'mta.hashConfirmed' ||
+      kind === 'mta.hashOverridden'
     );
   }
   if (filter === 'bind') return kind.startsWith('bind.') || kind.startsWith('schedule.');
+  if (filter === 'mta') return kind.startsWith('mta.');
   return false;
 }
 

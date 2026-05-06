@@ -44,6 +44,13 @@ import {
   type SubjectivityRecord,
   type TriageReplayState,
 } from './replay';
+import { freshMta, freshPolicy } from '@/lib/mta/types';
+import type {
+  MtaHashRecord,
+  MtaReplay,
+  PolicyReplay,
+  PolicyVersionRecord,
+} from '@/lib/mta/types';
 import type { HashId } from '@/lib/bind/types';
 
 /**
@@ -97,6 +104,10 @@ export type RanBerriState = {
    * prior book).
    */
   boundLedger: HistoricalBinder[];
+  /** Active MTA workflow state (module 9). */
+  mta: MtaReplay;
+  /** Policy version stack: baseBind + chronological MTAs. */
+  policy: PolicyReplay;
   lifecycle: {
     cursor: LifecycleMilestone;
     now: LifecycleMilestone;
@@ -307,6 +318,8 @@ export const useRanBerri = create<RanBerriState>()(
       bind: freshBind(),
       postBind: freshPostBind(),
       boundLedger: [],
+      mta: freshMta(),
+      policy: freshPolicy(),
       lifecycle: { cursor: 'quote', now: 'quote' },
       ui: {
         canvasMode: 'compact',
@@ -809,6 +822,8 @@ export const useRanBerri = create<RanBerriState>()(
           s.decline = null;
           s.bind = freshBind();
           s.postBind = freshPostBind();
+          s.mta = freshMta();
+          s.policy = freshPolicy();
           // Preserve boundLedger across reset — the moat compounds.
           // Use deepReset to wipe it.
           s.lifecycle = { cursor: 'quote', now: 'quote' };
@@ -851,6 +866,8 @@ export const useRanBerri = create<RanBerriState>()(
           merged.decline = result.decline;
           merged.bind = result.bind;
           merged.postBind = result.postBind;
+          merged.mta = result.mta;
+          merged.policy = result.policy;
           // Merge the persisted ledger with whatever this log replayed
           // — both contribute, and we de-duplicate on policyRef so
           // re-loading an already-recorded bind doesn't double-count.
@@ -1330,6 +1347,8 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
       s.bind.policyRef = e.policyRef;
       s.bind.signedBy = e.signedBy;
       s.submissionState = 'bound';
+      s.policy.bound = true;
+      s.policy.baseBindAt = e.at;
       // Advance the lifecycle 'now' to the Bind milestone — this is
       // what fills the seam in the ribbon and shifts the playhead.
       s.lifecycle.now = 'bind';
@@ -1399,6 +1418,163 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
     case 'audit.exported':
     case 'audit.stateReplayed':
       // Compliance-only events; no state mutation.
+      break;
+
+    // ---------- MTA / endorsement (module 9) ----------
+    case 'mta.requestReceived':
+      s.mta.phase = 'received';
+      s.mta.request = {
+        id: e.mtaId,
+        policyRef: e.submissionId,
+        effectiveDate: e.effectiveDate,
+        changeType: e.changeType,
+        brokerName: e.broker,
+        receivedAt: e.at,
+        subject: e.subject,
+        emailBody: '',
+      };
+      if (s.submissionState === 'bound') s.submissionState = 'mta-pending';
+      break;
+
+    case 'mta.extracted':
+      if (s.mta.request) {
+        s.mta.phase = 'extracted';
+        s.mta.fields = e.fields as MtaReplay['fields'];
+        s.mta.extractionConfidence = e.avgConfidence;
+        s.mta.fieldCount = e.fieldCount;
+      }
+      break;
+
+    case 'mta.gapFlagged':
+      s.mta.gaps.push({
+        id: e.gapId,
+        description: e.description,
+        detectedAt: e.at,
+        resolution: null,
+      });
+      if (s.mta.phase !== 'context-review') s.mta.phase = 'gap-pending';
+      break;
+
+    case 'mta.gapResolved': {
+      const g = s.mta.gaps.find((x) => x.id === e.gapId);
+      if (g) {
+        g.resolution = {
+          choice: e.choice,
+          reason: e.reason,
+          resolvedBy: e.resolvedBy,
+          resolvedAt: e.at,
+        };
+      }
+      const allResolved = s.mta.gaps.every((x) => x.resolution !== null);
+      if (allResolved) s.mta.phase = 'context-review';
+      break;
+    }
+
+    case 'mta.deltaRated':
+      s.mta.delta = {
+        beforePremium: e.beforePremium,
+        afterAnnualEquivalent: e.afterAnnualEquivalent,
+        annualDelta: e.annualDelta,
+        daysRemaining: e.daysRemaining,
+        daysInTerm: e.daysInTerm,
+        proRatedAP: e.proRatedAP,
+        sha: e.sha,
+        beforeCells: [],
+        afterCells: [],
+      };
+      s.mta.phase = 'delta-rating';
+      break;
+
+    case 'mta.capacityRechecked':
+      s.mta.capacity = {
+        deltaConsumption: e.deltaConsumption,
+        newTotalConsumption: e.newTotalConsumption,
+        sufficient: e.sufficient,
+        headroomAfter: 0,
+      };
+      s.mta.phase = 'capacity-rechecked';
+      break;
+
+    case 'mta.scheduleGenerated':
+      if (s.mta.request) {
+        s.mta.schedule = {
+          scheduleRef: e.scheduleRef,
+          endorsementNumber: s.policy.versions.length + 1,
+          effectiveDate: s.mta.request.effectiveDate,
+          endorsementNote: e.endorsementNote,
+          addedWarranty: e.addedWarranty,
+          warranties: [],
+          recipient: '',
+          recipientName: '',
+          coveringNote: '',
+        };
+        s.mta.phase = 'schedule-ready';
+      }
+      break;
+
+    case 'mta.scheduleEdited':
+      break;
+
+    case 'mta.hashConfirmed': {
+      const idx = s.mta.hashes.findIndex((h) => h.id === e.hashId);
+      const next: MtaHashRecord = {
+        id: e.hashId,
+        status: 'confirmed',
+        artefactSha: e.artefactSha,
+        expectedSha: e.artefactSha,
+        confirmedAt: e.at,
+        confirmedBy: e.confirmedBy,
+        overrideReason: null,
+      };
+      if (idx >= 0) s.mta.hashes[idx] = next;
+      else s.mta.hashes.push(next);
+      s.mta.phase = 'ceremony-in-progress';
+      break;
+    }
+
+    case 'mta.hashOverridden': {
+      const idx = s.mta.hashes.findIndex((h) => h.id === e.hashId);
+      const next: MtaHashRecord = {
+        id: e.hashId,
+        status: 'overridden',
+        artefactSha: e.currentSha,
+        expectedSha: e.expectedSha,
+        confirmedAt: e.at,
+        confirmedBy: e.overriddenBy,
+        overrideReason: e.reason,
+      };
+      if (idx >= 0) s.mta.hashes[idx] = next;
+      else s.mta.hashes.push(next);
+      break;
+    }
+
+    case 'mta.committed': {
+      s.mta.phase = 'committed';
+      s.mta.committedAt = e.at;
+      s.mta.signedBy = e.signedBy;
+      const versionRecord: PolicyVersionRecord = {
+        versionId: e.scheduleRef,
+        endorsementNumber: e.endorsementNumber,
+        effectiveDate: e.effectiveDate,
+        changeType: s.mta.request?.changeType ?? 'multi-change',
+        proRatedAP: e.proRatedAP,
+        afterAnnualEquivalent: e.afterAnnualEquivalent,
+        scheduleRef: e.scheduleRef,
+        signedBy: e.signedBy,
+        signedAt: e.at,
+      };
+      s.policy.versions.push(versionRecord);
+      s.submissionState = 'in-force-with-mta';
+      // Move the lifecycle 'now' to MTA-04 milestone.
+      s.lifecycle.now = 'mta-04';
+      s.lifecycle.cursor = 'mta-04';
+      break;
+    }
+
+    case 'mta.scheduleSent':
+      s.mta.sentAt = e.at;
+      s.mta.sentBy = e.sentBy;
+      s.mta.phase = 'sent';
       break;
 
     case 'slip.fieldEdited':

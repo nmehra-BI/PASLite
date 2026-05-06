@@ -55,6 +55,18 @@ const KIND_TITLE: Partial<Record<AuditEvent['kind'], string>> = {
   'schedule.sent': 'schedule.sent',
   'subjectivity.created': 'subjectivity.created',
   'subjectivity.tracked': 'subjectivity.tracked',
+  'mta.requestReceived': 'mta.requestReceived',
+  'mta.extracted': 'mta.extracted',
+  'mta.gapFlagged': 'mta.gapFlagged',
+  'mta.gapResolved': 'mta.gapResolved',
+  'mta.deltaRated': 'mta.deltaRated',
+  'mta.capacityRechecked': 'mta.capacityRechecked',
+  'mta.scheduleGenerated': 'mta.scheduleGenerated',
+  'mta.scheduleEdited': 'mta.scheduleEdited',
+  'mta.hashConfirmed': 'mta.hashConfirmed',
+  'mta.hashOverridden': 'mta.hashOverridden',
+  'mta.committed': 'mta.committed',
+  'mta.scheduleSent': 'mta.scheduleSent',
 };
 
 function summarise(e: AuditEvent): string {

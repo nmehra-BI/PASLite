@@ -76,6 +76,19 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'audit.viewed': 'Audit log viewed',
   'audit.exported': 'Audit log exported',
   'audit.stateReplayed': 'State replayed',
+  // Module 9 — endorsement / MTA
+  'mta.requestReceived': 'MTA request received',
+  'mta.extracted': 'MTA fields extracted',
+  'mta.gapFlagged': 'MTA gap flagged',
+  'mta.gapResolved': 'MTA gap resolved',
+  'mta.deltaRated': 'Delta rating completed',
+  'mta.capacityRechecked': 'Capacity re-checked',
+  'mta.scheduleGenerated': 'Revised schedule generated',
+  'mta.scheduleEdited': 'Schedule field edited',
+  'mta.hashConfirmed': 'MTA hash confirmed',
+  'mta.hashOverridden': 'MTA hash overridden',
+  'mta.committed': 'MTA committed',
+  'mta.scheduleSent': 'Revised schedule sent',
 };
 
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {
@@ -123,6 +136,8 @@ function dotTone(kind: AuditEvent['kind']): string {
     return 'var(--color-accent)';
   if (kind === 'submission.declined' || kind === 'quote.markedStale' || kind === 'bind.hashFailed')
     return 'var(--color-danger)';
+  if (kind === 'mta.gapFlagged') return 'var(--color-warn)';
+  if (kind === 'mta.hashOverridden') return 'var(--color-accent)';
   if (
     kind === 'extraction.completed' ||
     kind === 'enrichment.completed' ||
@@ -143,7 +158,16 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'bind.committed' ||
     kind === 'schedule.generated' ||
     kind === 'schedule.sent' ||
-    kind === 'subjectivity.created'
+    kind === 'subjectivity.created' ||
+    kind === 'mta.requestReceived' ||
+    kind === 'mta.extracted' ||
+    kind === 'mta.gapResolved' ||
+    kind === 'mta.deltaRated' ||
+    kind === 'mta.capacityRechecked' ||
+    kind === 'mta.scheduleGenerated' ||
+    kind === 'mta.hashConfirmed' ||
+    kind === 'mta.committed' ||
+    kind === 'mta.scheduleSent'
   )
     return 'var(--color-success)';
   return 'var(--color-ink)';

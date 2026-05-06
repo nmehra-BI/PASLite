@@ -17,6 +17,8 @@ export function BindIdentityStrip() {
   const submission = useRanBerri((s) => s.submission);
   const bindPhase = useRanBerri((s) => s.bind.phase);
   const policyRef = useRanBerri((s) => s.bind.policyRef);
+  const policy = useRanBerri((s) => s.policy);
+  const mta = useRanBerri((s) => s.mta);
   const folio = submission?.folio ?? '';
 
   if (!submission || (bindPhase !== 'in-progress' && bindPhase !== 'committed')) {
@@ -28,6 +30,12 @@ export function BindIdentityStrip() {
   const subRef = folioNum ? `SUB-${folioNum}` : submission.id;
   const polRef = policyRef ?? (folioNum ? `POL-${folioNum}` : null);
   const isBound = bindPhase === 'committed';
+  const versionLabel = `v${policy.versions.length + 1}`;
+  const hasMta = policy.versions.length > 0;
+  const latestAP = policy.versions[policy.versions.length - 1]?.proRatedAP ?? 0;
+  const annualEquivalent =
+    policy.versions[policy.versions.length - 1]?.afterAnnualEquivalent ?? null;
+  const mtaJustIssued = mta.phase === 'committed' || mta.phase === 'sent';
 
   return (
     <div
@@ -115,6 +123,24 @@ export function BindIdentityStrip() {
                 {polRef}
               </motion.span>
             )}
+            {isBound && hasMta && (
+              <motion.span
+                key="version"
+                initial={{ opacity: 0, x: -2 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.24 }}
+                className="serif"
+                style={{
+                  fontStyle: 'italic',
+                  fontSize: 13,
+                  color: 'var(--color-accent)',
+                  marginLeft: 4,
+                  letterSpacing: '-0.005em',
+                }}
+              >
+                {versionLabel}
+              </motion.span>
+            )}
           </AnimatePresence>
         </div>
 
@@ -127,12 +153,20 @@ export function BindIdentityStrip() {
             letterSpacing: '-0.005em',
           }}
         >
-          {isBound ? 'in force · 12 months' : 'four hashes pending'}
+          {isBound
+            ? hasMta && annualEquivalent !== null
+              ? `in force · 12 months · £${annualEquivalent.toLocaleString('en-GB')} annual${mtaJustIssued ? ` / £${latestAP.toLocaleString('en-GB')} AP` : ''}`
+              : 'in force · 12 months'
+            : 'four hashes pending'}
         </span>
       </div>
 
       <Pill tone={isBound ? 'success' : 'warn'} mono>
-        {isBound ? 'BOUND · IN FORCE' : 'BIND PENDING'}
+        {isBound
+          ? hasMta
+            ? `BOUND · IN FORCE · MTA-${policy.versions[policy.versions.length - 1]!.endorsementNumber.toString().padStart(2, '0')}`
+            : 'BOUND · IN FORCE'
+          : 'BIND PENDING'}
       </Pill>
     </div>
   );

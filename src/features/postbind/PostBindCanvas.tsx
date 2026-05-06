@@ -5,6 +5,7 @@ import { ScheduleSection } from './ScheduleSection';
 import { SubjectivitiesPanel } from './SubjectivitiesPanel';
 import { SubjectivityInspector } from './SubjectivityInspector';
 import { BoundCertificate } from './BoundCertificate';
+import { MtaIntakeButton, MtaWorkflow } from '@/features/mta';
 
 const TIME_FMT = new Intl.DateTimeFormat('en-GB', {
   hour: '2-digit',
@@ -99,6 +100,8 @@ export function PostBindCanvas() {
 
       <ScheduleSection />
       <SubjectivitiesPanel />
+      <MtaIntakeButton />
+      <MtaWorkflow />
 
       <SubjectivityInspector />
       {showCertificate && (

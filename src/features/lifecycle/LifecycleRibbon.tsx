@@ -68,11 +68,21 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
   const scrub = useRanBerri((s) => s.scrubLifecycle);
   const bindPhase = useRanBerri((s) => s.bind.phase);
   const subjectivities = useRanBerri((s) => s.postBind.subjectivities);
+  const policy = useRanBerri((s) => s.policy);
 
   const cursorSpec = MILESTONES.find((m) => m.key === cursor) ?? MILESTONES[0]!;
   const nowSpec = MILESTONES.find((m) => m.key === now) ?? MILESTONES[0]!;
   const playheadAtNow = cursor === now;
   const isBound = bindPhase === 'committed';
+
+  // MTA mini-markers between Bind (0.26) and MTA-04 (0.5). Each
+  // committed endorsement gets a small filled coral dot at a fraction
+  // of the (0.26 → 0.5) span.
+  const mtaMiniMarkers = policy.versions.map((v, i) => {
+    const fraction = (i + 1) / Math.max(1, policy.versions.length + 0.5);
+    const at = 0.26 + fraction * (0.5 - 0.26);
+    return { id: v.versionId, at, label: `MTA-0${v.endorsementNumber}` };
+  });
 
   // Project active subjectivities with critical dates onto the ribbon.
   // A 365-day in-force window maps to the seam→cancel range
@@ -201,6 +211,28 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
             />
           );
         })}
+
+        {/* MTA mini-markers — small filled coral dots on the track,
+            between Bind and MTA-04, one per committed endorsement. */}
+        {mtaMiniMarkers.map((m) => (
+          <span
+            key={`mta-${m.id}`}
+            title={m.label}
+            aria-label={m.label}
+            className="absolute"
+            style={{
+              left: `${m.at * 100}%`,
+              top: trackY - 3,
+              width: 6,
+              height: 6,
+              transform: 'translateX(-50%)',
+              background: 'var(--color-accent)',
+              borderRadius: 999,
+              boxShadow: '0 0 0 0.5px var(--color-accent)',
+            }}
+            aria-hidden
+          />
+        ))}
 
         {/* subjectivity ticks — small gilt vertical marks rendered
             ABOVE the track so they read as forecast obligations,

@@ -302,6 +302,15 @@ import type {
   PostBindReplay,
   SubjectivityRecord,
 } from '@/lib/bind/types';
+import type {
+  MtaHashRecord,
+  MtaReplay,
+  PolicyReplay,
+  PolicyVersionRecord,
+} from '@/lib/mta/types';
+import { freshMta, freshPolicy } from '@/lib/mta/types';
+export { freshMta, freshPolicy } from '@/lib/mta/types';
+export type { MtaReplay, PolicyReplay } from '@/lib/mta/types';
 
 export type BindReplay = {
   phase: BindCeremonyPhase;
@@ -382,7 +391,9 @@ export type SubmissionLifecycleState =
   | 'quote-sent'
   | 'bind-pending'
   | 'ntu-pending'
-  | 'bound';
+  | 'bound'
+  | 'mta-pending'
+  | 'in-force-with-mta';
 
 export type ReferralRecord = {
   reviewer: string;
@@ -422,6 +433,10 @@ export type ReplayResult = {
    * rehydrate (see `merge` in store.ts).
    */
   boundLedger: HistoricalBinder[];
+  /** Active or in-progress MTA workflow state. */
+  mta: MtaReplay;
+  /** Policy version stack: baseBind + chronological MTAs. */
+  policy: PolicyReplay;
 };
 
 export function freshArtifacts(): Record<ArtifactKey, ArtifactState> {
@@ -480,6 +495,8 @@ export function replay(events: AuditEvent[]): ReplayResult {
   const bind = freshBind();
   const postBind = freshPostBind();
   const replayBoundLedger: HistoricalBinder[] = [];
+  const mta = freshMta();
+  const policy = freshPolicy();
 
   for (const e of events) {
     switch (e.kind) {
@@ -1055,6 +1072,8 @@ export function replay(events: AuditEvent[]): ReplayResult {
         bind.policyRef = e.policyRef;
         bind.signedBy = e.signedBy;
         submissionState = 'bound';
+        policy.bound = true;
+        policy.baseBindAt = e.at;
         // Compound the same-MGA ledger from the live submission. Replay
         // produces a per-log ledger; the store merges this with any
         // pre-existing persisted ledger from prior submissions on
@@ -1123,6 +1142,167 @@ export function replay(events: AuditEvent[]): ReplayResult {
       case 'audit.stateReplayed':
         break;
 
+      // ---------- MTA / endorsement (module 9) ----------
+      case 'mta.requestReceived':
+        mta.phase = 'received';
+        mta.request = {
+          id: e.mtaId,
+          policyRef: e.submissionId,
+          effectiveDate: e.effectiveDate,
+          changeType: e.changeType,
+          brokerName: e.broker,
+          receivedAt: e.at,
+          subject: e.subject,
+          emailBody: '',
+        };
+        // The bound policy now has an MTA in flight.
+        if (submissionState === 'bound') submissionState = 'mta-pending';
+        break;
+
+      case 'mta.extracted':
+        if (mta.request) {
+          mta.phase = e.fields && Object.keys(e.fields).length > 0
+            ? 'extracted'
+            : 'extracting';
+          mta.fields = e.fields as MtaReplay['fields'];
+          mta.extractionConfidence = e.avgConfidence;
+          mta.fieldCount = e.fieldCount;
+        }
+        break;
+
+      case 'mta.gapFlagged':
+        mta.gaps.push({
+          id: e.gapId,
+          description: e.description,
+          detectedAt: e.at,
+          resolution: null,
+        });
+        if (mta.phase !== 'context-review') mta.phase = 'gap-pending';
+        break;
+
+      case 'mta.gapResolved': {
+        const g = mta.gaps.find((x) => x.id === e.gapId);
+        if (g) {
+          g.resolution = {
+            choice: e.choice,
+            reason: e.reason,
+            resolvedBy: e.resolvedBy,
+            resolvedAt: e.at,
+          };
+        }
+        const allResolved = mta.gaps.every((x) => x.resolution !== null);
+        if (allResolved) mta.phase = 'context-review';
+        break;
+      }
+
+      case 'mta.deltaRated':
+        mta.delta = {
+          beforePremium: e.beforePremium,
+          afterAnnualEquivalent: e.afterAnnualEquivalent,
+          annualDelta: e.annualDelta,
+          daysRemaining: e.daysRemaining,
+          daysInTerm: e.daysInTerm,
+          proRatedAP: e.proRatedAP,
+          sha: e.sha,
+          // Cell-level breakdown is recomputed live in the UI from
+          // computeDelta — keeping the audit event compact.
+          beforeCells: [],
+          afterCells: [],
+        };
+        mta.phase = 'delta-rating';
+        break;
+
+      case 'mta.capacityRechecked':
+        mta.capacity = {
+          deltaConsumption: e.deltaConsumption,
+          newTotalConsumption: e.newTotalConsumption,
+          sufficient: e.sufficient,
+          headroomAfter: 0,
+        };
+        mta.phase = 'capacity-rechecked';
+        break;
+
+      case 'mta.scheduleGenerated':
+        if (mta.request) {
+          mta.schedule = {
+            scheduleRef: e.scheduleRef,
+            endorsementNumber: policy.versions.length + 1,
+            effectiveDate: mta.request.effectiveDate,
+            endorsementNote: e.endorsementNote,
+            addedWarranty: e.addedWarranty,
+            warranties: [],
+            recipient: '',
+            recipientName: '',
+            coveringNote: '',
+          };
+          mta.phase = 'schedule-ready';
+        }
+        break;
+
+      case 'mta.scheduleEdited':
+        // Schedule edits are recorded but the rendered text is derived
+        // from the latest mta.scheduleGenerated event in the UI.
+        break;
+
+      case 'mta.hashConfirmed': {
+        const idx = mta.hashes.findIndex((h) => h.id === e.hashId);
+        const next: MtaHashRecord = {
+          id: e.hashId,
+          status: 'confirmed',
+          artefactSha: e.artefactSha,
+          expectedSha: e.artefactSha,
+          confirmedAt: e.at,
+          confirmedBy: e.confirmedBy,
+          overrideReason: null,
+        };
+        if (idx >= 0) mta.hashes[idx] = next;
+        else mta.hashes.push(next);
+        if (mta.phase !== 'ceremony-in-progress') mta.phase = 'ceremony-in-progress';
+        break;
+      }
+
+      case 'mta.hashOverridden': {
+        const idx = mta.hashes.findIndex((h) => h.id === e.hashId);
+        const next: MtaHashRecord = {
+          id: e.hashId,
+          status: 'overridden',
+          artefactSha: e.currentSha,
+          expectedSha: e.expectedSha,
+          confirmedAt: e.at,
+          confirmedBy: e.overriddenBy,
+          overrideReason: e.reason,
+        };
+        if (idx >= 0) mta.hashes[idx] = next;
+        else mta.hashes.push(next);
+        break;
+      }
+
+      case 'mta.committed': {
+        mta.phase = 'committed';
+        mta.committedAt = e.at;
+        mta.signedBy = e.signedBy;
+        const versionRecord: PolicyVersionRecord = {
+          versionId: e.scheduleRef,
+          endorsementNumber: e.endorsementNumber,
+          effectiveDate: e.effectiveDate,
+          changeType: mta.request?.changeType ?? 'multi-change',
+          proRatedAP: e.proRatedAP,
+          afterAnnualEquivalent: e.afterAnnualEquivalent,
+          scheduleRef: e.scheduleRef,
+          signedBy: e.signedBy,
+          signedAt: e.at,
+        };
+        policy.versions.push(versionRecord);
+        submissionState = 'in-force-with-mta';
+        break;
+      }
+
+      case 'mta.scheduleSent':
+        mta.sentAt = e.at;
+        mta.sentBy = e.sentBy;
+        mta.phase = 'sent';
+        break;
+
       // Pass-through:
       case 'submission.received':
       case 'gap.flagged':
@@ -1150,6 +1330,8 @@ export function replay(events: AuditEvent[]): ReplayResult {
     bind,
     postBind,
     boundLedger: replayBoundLedger,
+    mta,
+    policy,
   };
 }
 
