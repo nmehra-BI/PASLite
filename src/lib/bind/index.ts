@@ -1,4 +1,5 @@
 export { computeSha } from './hashEngine';
+export { deriveBoundLedgerEntry } from './deriveBoundLedgerEntry';
 export {
   validateHashes,
   buildHashInputsFromSubmission,

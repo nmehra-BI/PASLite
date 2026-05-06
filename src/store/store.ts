@@ -3,7 +3,14 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import type { AuditEvent } from '@/lib/audit';
 import { nextEventId } from '@/lib/audit';
-import type { Submission, LifecycleMilestone } from '@/lib/fixtures';
+import type {
+  HistoricalBinder,
+  Submission,
+  LifecycleMilestone,
+} from '@/lib/fixtures';
+// Import directly (not via the barrel) to avoid a circular load
+// through @/lib/bind/runBindCeremony, which imports the store back.
+import { deriveBoundLedgerEntry } from '@/lib/bind/deriveBoundLedgerEntry';
 import type { UnderwriterCorrected } from '@/lib/field';
 import {
   ALL_ARTIFACTS,
@@ -80,6 +87,16 @@ export type RanBerriState = {
   decline: DeclineRecord | null;
   bind: BindReplay;
   postBind: PostBindReplay;
+  /**
+   * Same-MGA bound binders ledger. Compounds across submissions —
+   * each bind appends a HistoricalBinder, and recommendation engines
+   * concat this onto the fixture pool so subsequent risks see the
+   * just-bound policy in their FCT-001 / FCT-002 cohorts.
+   *
+   * Survives `reset()` (a fresh submission shouldn't unlearn the
+   * prior book).
+   */
+  boundLedger: HistoricalBinder[];
   lifecycle: {
     cursor: LifecycleMilestone;
     now: LifecycleMilestone;
@@ -289,6 +306,7 @@ export const useRanBerri = create<RanBerriState>()(
       decline: null,
       bind: freshBind(),
       postBind: freshPostBind(),
+      boundLedger: [],
       lifecycle: { cursor: 'quote', now: 'quote' },
       ui: {
         canvasMode: 'compact',
@@ -791,6 +809,8 @@ export const useRanBerri = create<RanBerriState>()(
           s.decline = null;
           s.bind = freshBind();
           s.postBind = freshPostBind();
+          // Preserve boundLedger across reset — the moat compounds.
+          // Use deepReset to wipe it.
           s.lifecycle = { cursor: 'quote', now: 'quote' };
           s.ui = {
             canvasMode: 'compact',
@@ -811,6 +831,9 @@ export const useRanBerri = create<RanBerriState>()(
         auditLog: state.auditLog,
         lifecycle: state.lifecycle,
         ui: state.ui,
+        // Persist the cross-submission ledger separately. This is the
+        // moat: bound binders compound across demo sessions.
+        boundLedger: state.boundLedger,
       }),
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Partial<RanBerriState>) };
@@ -828,6 +851,16 @@ export const useRanBerri = create<RanBerriState>()(
           merged.decline = result.decline;
           merged.bind = result.bind;
           merged.postBind = result.postBind;
+          // Merge the persisted ledger with whatever this log replayed
+          // — both contribute, and we de-duplicate on policyRef so
+          // re-loading an already-recorded bind doesn't double-count.
+          const fromLog = result.boundLedger;
+          const existing = merged.boundLedger ?? [];
+          const seen = new Set(existing.map((b) => b.id));
+          merged.boundLedger = [
+            ...existing,
+            ...fromLog.filter((b) => !seen.has(b.id)),
+          ];
         }
         return merged;
       },
@@ -1301,6 +1334,20 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
       // what fills the seam in the ribbon and shifts the playhead.
       s.lifecycle.now = 'bind';
       s.lifecycle.cursor = 'bind';
+      // Compound the same-MGA ledger: append this just-bound policy
+      // so subsequent submissions' recommendation engines see it as
+      // a similar in-force binder. Idempotent on policyRef.
+      if (s.submission && !s.boundLedger.some((b) => b.id === e.policyRef)) {
+        s.boundLedger.push(
+          deriveBoundLedgerEntry({
+            submission: s.submission,
+            policyRef: e.policyRef,
+            premium: e.premium,
+            signedBy: e.signedBy,
+            signedAt: e.at,
+          }),
+        );
+      }
       break;
 
     case 'bind.held':

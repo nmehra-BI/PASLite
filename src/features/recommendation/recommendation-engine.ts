@@ -63,10 +63,15 @@ export async function runRecommendationCinematic(opts?: {
       g.fieldPath === 'fireSuppressionDisclosed' && g.requestSent !== null,
   );
 
+  // Same-MGA evidence: fixture ledger + any binders bound in this or
+  // prior demo sessions (the data flywheel). Each bind compounds the
+  // signal for the next risk's recommendation.
+  const allBinders = [...getHistoricalBinders(), ...main.boundLedger];
+
   const recommendation = runRecommendation({
     submission,
     ourPremium: ratingOutput.premium,
-    binders: getHistoricalBinders(),
+    binders: allBinders,
     losses: getLossesToCompetitors(),
     competitorIntel: getCompetitiveIntel(),
     fireSuppressionResolved,
@@ -122,9 +127,12 @@ export async function runRecommendationCinematic(opts?: {
 // data without firing the cinematic (e.g. for the deep-dive inspector).
 export { runRecommendation } from '@/lib/recommendation';
 
-// Helper consumers use to fetch the cited records.
+// Helper consumers use to fetch the cited records — searches the
+// fixture pool first, then the runtime bound ledger.
 export function lookupBinder(id: string) {
-  return getHistoricalBinders().find((b) => b.id === id);
+  const fixture = getHistoricalBinders().find((b) => b.id === id);
+  if (fixture) return fixture;
+  return useRanBerri.getState().boundLedger.find((b) => b.id === id);
 }
 export function lookupLoss(id: string) {
   return getLossesToCompetitors().find((l) => l.id === id);

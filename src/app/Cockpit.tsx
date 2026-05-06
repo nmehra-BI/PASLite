@@ -14,6 +14,8 @@ import { StalenessBanner } from '@/components';
 import { SeamAnimation } from '@/features/bind';
 import { PostBindCanvas } from '@/features/postbind';
 import { AuditLogInspector } from '@/features/audit';
+import { HistoricalScrubOverlay } from '@/features/lifecycle/HistoricalScrubOverlay';
+import { BindIdentityStrip } from '@/features/bind/BindIdentityStrip';
 import { Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 
@@ -50,6 +52,9 @@ export function Cockpit() {
 }
 
 function CanvasColumn() {
+  const cursor = useRanBerri((s) => s.lifecycle.cursor);
+  const now = useRanBerri((s) => s.lifecycle.now);
+  const scrubbed = cursor !== now;
   return (
     <main
       style={{
@@ -62,11 +67,30 @@ function CanvasColumn() {
     >
       <CanvasSubject />
       <RibbonBand />
+      <BindIdentityStrip />
+      <HistoricalScrubOverlay />
       <TerminalBanner />
       <QuoteSentBanner />
       <PendingActionBanner />
       <StalenessBanner />
-      <CanvasBody />
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          // Sepia + grayscale tint signals "this is not the live state"
+          // when the underwriter has scrubbed the lifecycle ribbon
+          // off-now. The transition makes the de-saturation feel
+          // deliberate rather than glitchy.
+          filter: scrubbed
+            ? 'sepia(0.35) saturate(0.7) brightness(0.97)'
+            : 'none',
+          transition: 'filter 280ms cubic-bezier(0.4,0,0.2,1)',
+        }}
+      >
+        <CanvasBody />
+      </div>
     </main>
   );
 }

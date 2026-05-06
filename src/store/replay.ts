@@ -1,10 +1,13 @@
 import type { AuditEvent } from '@/lib/audit';
-import type { Submission } from '@/lib/fixtures/types';
+import type { HistoricalBinder, Submission } from '@/lib/fixtures';
 import type { SourceResult } from '@/lib/fixtures';
 import type { Field, SystemExtracted } from '@/lib/field';
 import { extractField } from '@/lib/field';
 import { isField, type ArtifactKey } from '@/lib/deps';
 import { getAtPath, setAtPath } from '@/lib/paths';
+// Import directly to dodge a circular load through the bind barrel
+// (runBindCeremony imports the store).
+import { deriveBoundLedgerEntry } from '@/lib/bind/deriveBoundLedgerEntry';
 
 /**
  * Reconstruct cockpit state from the audit log.
@@ -413,6 +416,12 @@ export type ReplayResult = {
   decline: DeclineRecord | null;
   bind: BindReplay;
   postBind: PostBindReplay;
+  /**
+   * Bound-binders projected from this log. The store merges this with
+   * any pre-existing persisted ledger from prior submissions during
+   * rehydrate (see `merge` in store.ts).
+   */
+  boundLedger: HistoricalBinder[];
 };
 
 export function freshArtifacts(): Record<ArtifactKey, ArtifactState> {
@@ -470,6 +479,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
   let decline: DeclineRecord | null = null;
   const bind = freshBind();
   const postBind = freshPostBind();
+  const replayBoundLedger: HistoricalBinder[] = [];
 
   for (const e of events) {
     switch (e.kind) {
@@ -1045,6 +1055,21 @@ export function replay(events: AuditEvent[]): ReplayResult {
         bind.policyRef = e.policyRef;
         bind.signedBy = e.signedBy;
         submissionState = 'bound';
+        // Compound the same-MGA ledger from the live submission. Replay
+        // produces a per-log ledger; the store merges this with any
+        // pre-existing persisted ledger from prior submissions on
+        // rehydrate.
+        if (submission && !replayBoundLedger.some((b) => b.id === e.policyRef)) {
+          replayBoundLedger.push(
+            deriveBoundLedgerEntry({
+              submission,
+              policyRef: e.policyRef,
+              premium: e.premium,
+              signedBy: e.signedBy,
+              signedAt: e.at,
+            }),
+          );
+        }
         break;
 
       case 'bind.held':
@@ -1124,6 +1149,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
     decline,
     bind,
     postBind,
+    boundLedger: replayBoundLedger,
   };
 }
 

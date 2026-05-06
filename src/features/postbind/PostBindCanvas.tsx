@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion';
 import { Check, FileText } from 'lucide-react';
 import { useRanBerri } from '@/store';
-import { BoundHeader } from './BoundHeader';
 import { ScheduleSection } from './ScheduleSection';
 import { SubjectivitiesPanel } from './SubjectivitiesPanel';
 import { SubjectivityInspector } from './SubjectivityInspector';
@@ -49,8 +48,6 @@ export function PostBindCanvas() {
         background: 'var(--color-bg)',
       }}
     >
-      <BoundHeader />
-
       {/* Bind summary strip — collapsed ceremony as single line. */}
       <button
         type="button"

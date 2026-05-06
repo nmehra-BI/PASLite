@@ -202,7 +202,9 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
           );
         })}
 
-        {/* subjectivity ticks — small gilt vertical marks on row B */}
+        {/* subjectivity ticks — small gilt vertical marks rendered
+            ABOVE the track so they read as forecast obligations,
+            distinct from the milestone dots that sit on the track. */}
         {subjectivityTicks.map((tick) => (
           <button
             key={`tick-${tick.id}`}
@@ -213,23 +215,27 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
             className="absolute"
             style={{
               left: `${tick.at * 100}%`,
-              top: trackY - 6,
-              width: 12,
-              height: 12,
+              // Sit fully above the track in the upper portion of row B,
+              // clear of milestone dots that span trackY ± 4.5.
+              top: trackY - 18,
+              width: 14,
+              height: 14,
               transform: 'translateX(-50%)',
               padding: 0,
               background: 'transparent',
               border: 0,
               cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'center',
             }}
           >
             <span
               style={{
                 display: 'block',
-                width: 2,
-                height: 12,
+                width: 1.5,
+                height: 10,
                 background: 'var(--color-accent)',
-                margin: '0 auto',
                 opacity: 0.85,
               }}
             />
