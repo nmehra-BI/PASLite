@@ -1043,6 +1043,11 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
       s.quote.preservedEdits = e.preservedEdits;
       break;
 
+    case 'email.streamFinished':
+      // No materialised state mutation. The editor reads the log
+      // directly to decide whether to skip the stream on mount.
+      break;
+
     case 'slip.fieldEdited':
       s.quote.slipEdits[e.fieldKey] = {
         value: e.nextValue,

@@ -687,6 +687,85 @@ describe('replay', () => {
     expect(r.quote.staleSinceSent?.reason).toContain('upstream');
   });
 
+  it('slip.regenerated carries the list of preserved edit keys', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T09:32:00Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'slip.fieldEdited',
+        submissionId: SUB_ID,
+        fieldKey: 'aggregate',
+        previousValue: '£10,000,000',
+        nextValue: '£12,500,000',
+        editedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:32:30Z',
+        actor: { kind: 'underwriter', id: 'nm' },
+        kind: 'slip.fieldEdited',
+        submissionId: SUB_ID,
+        fieldKey: 'warranty.0',
+        previousValue: 'EA permit must remain in force …',
+        nextValue: 'EA permit AND fire safety cert must remain in force.',
+        editedBy: 'nm',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:40:00Z',
+        actor: { kind: 'system' },
+        kind: 'slip.regenerated',
+        submissionId: SUB_ID,
+        preservedEdits: 2,
+        preservedEditKeys: ['aggregate', 'warranty.0'],
+        revision: false,
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:40:01Z',
+        actor: { kind: 'system' },
+        kind: 'slip.generated',
+        submissionId: SUB_ID,
+        slipRef: 'POL-29481-Q1',
+        premium: 40_732,
+        sha: 'sha-7f2a-r2',
+      },
+    ];
+    const r = replay(events);
+    expect(r.quote.preservedEdits).toBe(2);
+    expect(r.quote.slipEdits.aggregate?.value).toBe('£12,500,000');
+    expect(r.quote.slipEdits['warranty.0']?.value).toContain('fire safety cert');
+    expect(r.quote.slipPremium).toBe(40_732);
+  });
+
+  it('email.streamFinished is a marker only — no materialised state mutation', () => {
+    const events: AuditEvent[] = [
+      brokerCreated(),
+      {
+        id: id(),
+        at: '2026-05-09T09:30:04Z',
+        actor: { kind: 'system', modelVersion: 'sonnet-4-7' },
+        kind: 'email.drafted',
+        submissionId: SUB_ID,
+        subject: 'Quote',
+        body: 'Hi Sarah …',
+        recipient: 's.whitfield@surestep.co.uk',
+      },
+      {
+        id: id(),
+        at: '2026-05-09T09:30:06Z',
+        actor: { kind: 'system' },
+        kind: 'email.streamFinished',
+        submissionId: SUB_ID,
+      },
+    ];
+    const r = replay(events);
+    // Materialised email body unchanged by streamFinished
+    expect(r.quote.email?.body).toBe('Hi Sarah …');
+  });
+
   it('artifact.computed clears staleSince', () => {
     const events: AuditEvent[] = [
       {

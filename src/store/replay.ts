@@ -722,6 +722,13 @@ export function replay(events: AuditEvent[]): ReplayResult {
         // edits in `quote.slipEdits` are intentionally NOT cleared
         break;
 
+      case 'email.streamFinished':
+        // The replay reducer doesn't carry stream state in the
+        // materialised result — the EmailDraftEditor reads the audit
+        // log directly. This case is a no-op marker; consumers
+        // (the editor) walk the log to decide whether to stream.
+        break;
+
       case 'slip.fieldEdited':
         quote.slipEdits[e.fieldKey] = {
           value: e.nextValue,

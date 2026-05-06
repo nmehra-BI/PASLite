@@ -1,8 +1,10 @@
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useState } from 'react';
 import { useRanBerri } from '@/store';
 import { useReadOnly } from '@/lib/readOnly';
 import { Button } from '@/components';
+import { buildRatingInputs, runRating } from '@/lib/rating';
+import { prepareRevisedQuote } from '@/features/rating';
 import { SendModal } from './SendModal';
 
 function timeAgo(iso: string): string {
@@ -18,20 +20,37 @@ function timeAgo(iso: string): string {
  * Banner shown across the canvas top once a quote has been sent.
  * Switches from info-bg to warn-bg if the underlying rating goes
  * stale after the send (the "sent quote is stale" pattern).
+ *
+ * When stale, the banner runs the engine inline against the live
+ * submission inputs (pure call, no events) to project the would-be
+ * premium — so the user sees the *new* number, not the previously
+ * committed one.
  */
 export function QuoteSentBanner() {
   const submissionState = useRanBerri((s) => s.submissionState);
+  const submission = useRanBerri((s) => s.submission);
   const quote = useRanBerri((s) => s.quote);
   const ratingArtifact = useRanBerri((s) => s.artifacts.rating);
-  const rating = useRanBerri((s) => s.rating);
   const recallQuote = useRanBerri((s) => s.recallQuote);
   const readOnly = useReadOnly();
   const [sendOpen, setSendOpen] = useState(false);
-
-  if (submissionState !== 'quote-sent' || !quote.sentAt) return null;
+  const [preparing, setPreparing] = useState(false);
 
   const isStale =
     quote.staleSinceSent !== null || ratingArtifact.staleSince !== null;
+
+  // Project the would-be premium against the live submission inputs.
+  // Pure call — no audit events emitted.
+  const projectedPremium = useMemo(() => {
+    if (!submission || !isStale) return null;
+    try {
+      return runRating(buildRatingInputs(submission)).premium;
+    } catch {
+      return null;
+    }
+  }, [submission, isStale]);
+
+  if (submissionState !== 'quote-sent' || !quote.sentAt) return null;
 
   const recipient =
     quote.email?.recipient.split('@')[0]?.replace(/[._]/g, ' ') ?? 'broker';
@@ -39,6 +58,17 @@ export function QuoteSentBanner() {
     .split(' ')
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join(' ');
+
+  const handleRevised = async () => {
+    if (preparing) return;
+    setPreparing(true);
+    try {
+      await prepareRevisedQuote();
+      setSendOpen(true);
+    } finally {
+      setPreparing(false);
+    }
+  };
 
   return (
     <>
@@ -79,25 +109,28 @@ export function QuoteSentBanner() {
               letterSpacing: '-0.005em',
             }}
           >
-            {isStale && rating.output
-              ? `Sent quote is stale · current rating produces £${rating.output.premium.toLocaleString()} · consider sending a revised quote`
-              : `Quote sent to ${recipientName} · ${new Date(
-                  quote.sentAt,
-                ).toLocaleString('en-GB', {
-                  day: 'numeric',
-                  month: 'short',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })} · ${timeAgo(quote.sentAt)}`}
+            {isStale && projectedPremium !== null
+              ? `Sent quote is stale · live rating projects £${projectedPremium.toLocaleString('en-GB')} (was £${(quote.slipPremium ?? 0).toLocaleString('en-GB')}) · consider sending a revised quote`
+              : isStale
+                ? 'Sent quote is stale · upstream change pending re-rate · consider sending a revised quote'
+                : `Quote sent to ${recipientName} · ${new Date(
+                    quote.sentAt,
+                  ).toLocaleString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })} · ${timeAgo(quote.sentAt)}`}
           </span>
           <span style={{ flex: 1 }} />
           {isStale && !readOnly && (
             <Button
               variant="primary"
               size="sm"
-              onClick={() => setSendOpen(true)}
+              onClick={handleRevised}
+              disabled={preparing}
             >
-              Send revised quote
+              {preparing ? 'Preparing…' : 'Send revised quote'}
             </Button>
           )}
           {!readOnly && (

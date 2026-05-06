@@ -116,10 +116,19 @@ export async function runRatingCinematic(opts?: {
  * Generate the slip artefact + draft the broker email. Idempotent —
  * rerunning preserves the slip's user-edited fields (their
  * `slip.fieldEdited` events stay in the log). Emits
- * `slip.generated`, optionally `slip.regenerated`, plus
- * `email.drafted` if no email has been drafted yet.
+ * `slip.generated`, optionally `slip.regenerated` (with the list of
+ * preserved field keys), plus `email.drafted` when there's no email
+ * yet OR when `regenerate` is true.
+ *
+ * `revision: true` marks this regen as a revised-quote redraft (after
+ * a sent quote went stale). The covering email opens with the prior
+ * premium + sent date so the broker reads "we've revised" rather than
+ * a fresh quote.
  */
-export function generateSlipAndEmail(opts?: { regenerate?: boolean }): void {
+export function generateSlipAndEmail(opts?: {
+  regenerate?: boolean;
+  revision?: boolean;
+}): void {
   const main = useRanBerri.getState();
   const submission = main.submission;
   if (!submission) return;
@@ -128,12 +137,22 @@ export function generateSlipAndEmail(opts?: { regenerate?: boolean }): void {
 
   const slipRef = `POL-29481-Q1`;
 
+  // Capture prior version BEFORE we update the slip — used by the
+  // revised email draft below.
+  const priorVersion =
+    opts?.revision && main.quote.sentAt && main.quote.slipPremium
+      ? { premium: main.quote.slipPremium, sentAt: main.quote.sentAt }
+      : null;
+
   if (opts?.regenerate) {
+    const editKeys = Object.keys(main.quote.slipEdits);
     main.appendAuditEvent({
       actor: { kind: 'system' },
       kind: 'slip.regenerated',
       submissionId: SUBMISSION_ID,
-      preservedEdits: Object.keys(main.quote.slipEdits).length,
+      preservedEdits: editKeys.length,
+      preservedEditKeys: editKeys,
+      revision: opts?.revision,
     });
   }
 
@@ -146,8 +165,8 @@ export function generateSlipAndEmail(opts?: { regenerate?: boolean }): void {
     sha: ratingOutput.sha,
   });
 
-  // Draft the email if none exists yet (preserve user edits across
-  // regen).
+  // Draft the email if none exists yet, OR if we're regenerating
+  // (revised quote requires a fresh draft).
   if (!main.quote.email || opts?.regenerate) {
     const broker =
       (effectiveValue(submission.broker) as string | null) ??
@@ -156,7 +175,6 @@ export function generateSlipAndEmail(opts?: { regenerate?: boolean }): void {
       (effectiveValue(submission.brokerTargetPremium) as number | null) ?? null;
     const lossRatio =
       (effectiveValue(submission.statedLossRatio) as number | null) ?? null;
-    // Leeds permit warranty fires when a permit expires within term
     const inception =
       (effectiveValue(submission.cover.inceptionDate) as string | null) ?? null;
     const expiry =
@@ -178,6 +196,7 @@ export function generateSlipAndEmail(opts?: { regenerate?: boolean }): void {
       leedsPermitWarranty,
       underwriter: 'Nishit',
       ref: slipRef,
+      priorVersion,
     });
 
     main.appendAuditEvent({
@@ -187,10 +206,26 @@ export function generateSlipAndEmail(opts?: { regenerate?: boolean }): void {
       subject,
       body,
       recipient: 's.whitfield@surestep.co.uk',
+      revision: opts?.revision,
     });
   }
 
   useRanBerri.getState().markArtifactComputed('quote');
+}
+
+/**
+ * Orchestrate a revised-quote send: rerun the rating cinematic if
+ * stale, regenerate the slip with revision=true (which redrafts the
+ * email with prior-version context), and resolve when the modal is
+ * ready to open.
+ */
+export async function prepareRevisedQuote(): Promise<void> {
+  const main = useRanBerri.getState();
+  const ratingArtifact = main.artifacts.rating;
+  if (ratingArtifact.staleSince !== null) {
+    await runRatingCinematic({ rerun: true });
+  }
+  generateSlipAndEmail({ regenerate: true, revision: true });
 }
 
 /**

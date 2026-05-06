@@ -45,6 +45,7 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'slip.regenerated': 'Slip regenerated',
   'email.drafted': 'Email drafted',
   'email.edited': 'Email edited',
+  'email.streamFinished': 'Email body settled',
   'quote.sent': 'Quote sent to broker',
   'quote.recalled': 'Quote recalled',
   'quote.markedStale': 'Quote marked stale',
@@ -142,7 +143,8 @@ function aggregate(log: AuditEvent[]): EventEntry[] {
       e.kind !== 'triage.checkEvaluated' &&
       e.kind !== 'rating.cellComputed' &&
       e.kind !== 'slip.fieldEdited' &&
-      e.kind !== 'email.edited',
+      e.kind !== 'email.edited' &&
+      e.kind !== 'email.streamFinished',
   );
   return filtered.map((event) => {
     if (event.kind === 'extraction.completed') {

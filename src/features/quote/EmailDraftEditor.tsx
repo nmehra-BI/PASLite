@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Paperclip } from 'lucide-react';
 import { useRanBerri } from '@/store';
 import { useReadOnly } from '@/lib/readOnly';
 
 const STREAM_DURATION_MS = 1500;
+const SUBMISSION_ID = 'sub_greenline_2026_05';
 
 type Props = {
-  /** Skip the streaming intro (e.g. on subsequent opens). */
-  alreadyStreamed?: boolean;
   /** Notify parent when the body is fully visible. */
   onStreamComplete?: () => void;
 };
@@ -17,26 +16,47 @@ type Props = {
  * ~1.5s on first mount; the user can edit at any time. Edits emit
  * `email.edited` events.
  */
-export function EmailDraftEditor({
-  alreadyStreamed = false,
-  onStreamComplete,
-}: Props) {
+export function EmailDraftEditor({ onStreamComplete }: Props) {
   const email = useRanBerri((s) => s.quote.email);
   const slipRef = useRanBerri((s) => s.quote.slipRef);
   const editEmail = useRanBerri((s) => s.editEmailField);
+  const appendAudit = useRanBerri((s) => s.appendAuditEvent);
+  const auditLog = useRanBerri((s) => s.auditLog);
   const readOnly = useReadOnly();
   const bodyRef = useRef<HTMLDivElement>(null);
+
+  // The stream replays from the audit log: if a `email.streamFinished`
+  // event exists *after* the most recent `email.drafted`, we skip the
+  // intro and show the body immediately. This makes mid-stream
+  // refresh complete instantly (the spec-acceptable behaviour) and
+  // ensures a fresh `email.drafted` (e.g. revised-quote redraft)
+  // restreams from scratch.
+  const alreadyStreamed = useMemo(() => {
+    let lastDrafted = -1;
+    let lastFinished = -1;
+    for (let i = 0; i < auditLog.length; i++) {
+      const e = auditLog[i]!;
+      if (e.kind === 'email.drafted') lastDrafted = i;
+      if (e.kind === 'email.streamFinished') lastFinished = i;
+    }
+    return lastFinished > lastDrafted;
+  }, [auditLog]);
+
   const [streaming, setStreaming] = useState(!alreadyStreamed);
   const [visible, setVisible] = useState<string>(
     alreadyStreamed ? email?.body ?? '' : '',
   );
 
-  // Stream the body word by word on first mount.
+  // Stream the body word by word on first mount per draft. The
+  // `alreadyStreamed` snapshot is captured once at mount and not
+  // reactive; the streaming loop sets `streaming` to false on
+  // completion which gates re-runs.
   useEffect(() => {
     if (!email?.body) return;
     if (alreadyStreamed) {
       setVisible(email.body);
       setStreaming(false);
+      onStreamComplete?.();
       return;
     }
     const words = email.body.split(/(\s+)/); // keep whitespace tokens
@@ -50,6 +70,13 @@ export function EmailDraftEditor({
         setVisible(email.body);
         setStreaming(false);
         clearInterval(handle);
+        // Record completion so subsequent mounts (incl. post-refresh)
+        // skip the stream.
+        appendAudit({
+          actor: { kind: 'system' },
+          kind: 'email.streamFinished',
+          submissionId: SUBMISSION_ID,
+        });
         onStreamComplete?.();
         return;
       }

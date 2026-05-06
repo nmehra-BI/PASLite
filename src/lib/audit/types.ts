@@ -294,10 +294,32 @@ export type AuditEvent = AuditEventBase &
         nextValue: string;
         editedBy: string;
       }
-    | { kind: 'slip.regenerated'; submissionId: string; preservedEdits: number }
+    | {
+        kind: 'slip.regenerated';
+        submissionId: string;
+        preservedEdits: number;
+        /** Stable field keys whose user edits survived the regen. */
+        preservedEditKeys: string[];
+        /**
+         * True when the regen is part of a revised-quote send (after
+         * a sent quote went stale). The covering email is redrafted
+         * with revision context.
+         */
+        revision?: boolean;
+      }
 
     // Email + send
-    | { kind: 'email.drafted'; submissionId: string; subject: string; body: string; recipient: string }
+    | { kind: 'email.drafted'; submissionId: string; subject: string; body: string; recipient: string; revision?: boolean }
+    | {
+        /**
+         * Emitted by the email editor when the word-by-word stream
+         * completes. On subsequent opens (including post-refresh),
+         * the editor checks for this event after the most recent
+         * `email.drafted` and skips the stream if found.
+         */
+        kind: 'email.streamFinished';
+        submissionId: string;
+      }
     | {
         kind: 'email.edited';
         submissionId: string;

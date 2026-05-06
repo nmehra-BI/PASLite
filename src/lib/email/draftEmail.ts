@@ -14,6 +14,11 @@ export type DraftEmailInputs = {
   underwriter: string;
   /** Quote reference, e.g. POL-29481-Q1 */
   ref: string;
+  /**
+   * Set when this email is a revised-quote redraft. The body opens
+   * with a one-liner acknowledging the prior version.
+   */
+  priorVersion?: { premium: number; sentAt: string } | null;
 };
 
 /**
@@ -65,10 +70,26 @@ export function draftEmail(inputs: DraftEmailInputs): {
 
   const greeting = `Hi ${inputs.brokerName.split(' ')[0] ?? 'there'},`;
 
+  const isRevision = inputs.priorVersion != null;
+  const priorDate = isRevision
+    ? new Date(inputs.priorVersion!.sentAt).toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'long',
+      })
+    : null;
+  const priorPremium = isRevision
+    ? `£${inputs.priorVersion!.premium.toLocaleString('en-GB')}`
+    : null;
+  const newPremium = `£${inputs.premium.toLocaleString('en-GB')}`;
+
+  const opening = isRevision
+    ? `Following our quote of ${priorDate} (${priorPremium}), we've revised the figures to ${newPremium}; please disregard the prior version. The change reflects an updated input on the slip.`
+    : `Pleased to attach our quote for ${insuredName}, inception ${inception}.${targetLine ? ' ' + targetLine : ''}`;
+
   const body = [
     greeting,
     '',
-    `Pleased to attach our quote for ${insuredName}, inception ${inception}.${targetLine ? ' ' + targetLine : ''}`,
+    opening,
     '',
     'Two warranties to flag, both standard for the class:',
     '',
@@ -80,5 +101,6 @@ export function draftEmail(inputs: DraftEmailInputs): {
     inputs.underwriter,
   ].join('\n');
 
-  return { subject, body };
+  const finalSubject = isRevision ? `${subject} (revised)` : subject;
+  return { subject: finalSubject, body };
 }

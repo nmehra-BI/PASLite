@@ -14,6 +14,7 @@ export {
   LOSS_RATIO_BANDS,
 } from './constants';
 export { runRating } from './engine';
+export { buildRatingInputs } from './buildInputs';
 export {
   formatBP,
   formatGBP,
