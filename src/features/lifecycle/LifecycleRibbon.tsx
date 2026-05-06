@@ -39,18 +39,27 @@ const SEAMS: SeamSpec[] = [
   { label: 'policy terminates', at: 0.82 },
 ];
 
+type Props = {
+  /** Tighter geometry, suitable for embedding in a canvas header strip. */
+  compact?: boolean;
+};
+
 /**
+ * Pure ribbon visualisation. No outer card, no max-width column. The
+ * caller decides chrome &mdash; the Pitch view wraps it in a card; the
+ * Cockpit view embeds it as a header band.
+ *
  * Vertical layout, top to bottom:
- *   row A — phase band      (italic serif phase labels, 22px)
- *   row B — track line      (dots + hairline, 26px)
- *   row C — milestone names (sans, 18px)
- *   row D — playhead arrow + "now" italic (16px)
- *   row E — seam labels     (italic serif faint, 16px)
+ *   row A — phase band      (italic serif phase labels)
+ *   row B — track line      (dots + hairline)
+ *   row C — milestone names (sans)
+ *   row D — playhead arrow + "now" italic
+ *   row E — seam labels     (italic serif faint)
  *
  * Seam labels live in their own row below everything, so they cannot
  * collide with phase headers.
  */
-export function LifecycleRibbon() {
+export function LifecycleRibbon({ compact = false }: Props = {}) {
   const cursor = useRanBerri((s) => s.lifecycle.cursor);
   const now = useRanBerri((s) => s.lifecycle.now);
   const scrub = useRanBerri((s) => s.scrubLifecycle);
@@ -59,11 +68,11 @@ export function LifecycleRibbon() {
   const nowSpec = MILESTONES.find((m) => m.key === now) ?? MILESTONES[0]!;
   const playheadAtNow = cursor === now;
 
-  const ROW_A = 22;
-  const ROW_B = 26;
-  const ROW_C = 18;
-  const ROW_D = 16;
-  const ROW_E = 16;
+  const ROW_A = compact ? 18 : 22;
+  const ROW_B = compact ? 22 : 26;
+  const ROW_C = compact ? 16 : 18;
+  const ROW_D = compact ? 14 : 16;
+  const ROW_E = compact ? 14 : 16;
   const total = ROW_A + ROW_B + ROW_C + ROW_D + ROW_E;
 
   const yA = 0;
@@ -74,16 +83,14 @@ export function LifecycleRibbon() {
 
   const trackY = yB + ROW_B / 2;
 
+  const phaseFontSize = compact ? 11 : 12.5;
+  const milestoneFontSize = compact ? 11 : 11.5;
+  const nowFontSize = compact ? 10 : 10.5;
+  const seamFontSize = compact ? 10 : 10.5;
+
   return (
-    <section className="mx-auto max-w-[1280px] px-8 pb-8">
-      <div
-        className="hairline-mid"
-        style={{
-          background: 'var(--color-surface)',
-          borderRadius: 'var(--radius-card)',
-          padding: '20px 28px 22px',
-        }}
-      >
+    <div>
+      {!compact && (
         <div className="mb-5 flex items-center justify-between">
           <div className="eyebrow">policy lifecycle</div>
           <div
@@ -98,203 +105,203 @@ export function LifecycleRibbon() {
             {playheadAtNow ? 'now' : 'scrubbed'}
           </div>
         </div>
+      )}
 
-        <div className="relative" style={{ height: total }}>
-          {/* row A: phase labels */}
-          {PHASES.map((p) => {
-            const left = `${p.from * 100}%`;
-            const width = `${(p.to - p.from) * 100}%`;
-            return (
-              <div
-                key={p.label}
-                className="absolute flex items-center justify-center"
-                style={{
-                  left,
-                  width,
-                  top: yA,
-                  height: ROW_A,
-                  fontFamily: 'var(--font-serif)',
-                  fontStyle: 'italic',
-                  fontSize: 12.5,
-                  color: 'var(--color-ink-mute)',
-                }}
-                aria-hidden
-              >
-                {p.label}
-              </div>
-            );
-          })}
-
-          {/* row B: track line */}
-          <div
-            className="absolute left-0 right-0"
-            style={{
-              top: trackY,
-              height: 0.5,
-              background: 'var(--color-rule-mid)',
-            }}
-            aria-hidden
-          />
-
-          {/* phase tint band — barely visible thicker stripe under in-force */}
-          <div
-            className="absolute"
-            style={{
-              left: `${PHASES[1]!.from * 100}%`,
-              width: `${(PHASES[1]!.to - PHASES[1]!.from) * 100}%`,
-              top: trackY - 0.5,
-              height: 1.5,
-              background: 'rgba(31, 30, 29, 0.10)',
-            }}
-            aria-hidden
-          />
-
-          {/* seam vertical hairlines spanning rows B–E */}
-          {SEAMS.map((seam) => (
+      <div className="relative" style={{ height: total }}>
+        {/* row A: phase labels */}
+        {PHASES.map((p) => {
+          const left = `${p.from * 100}%`;
+          const width = `${(p.to - p.from) * 100}%`;
+          return (
             <div
-              key={`${seam.label}-line`}
-              className="absolute"
+              key={p.label}
+              className="absolute flex items-center justify-center"
               style={{
-                left: `${seam.at * 100}%`,
-                top: yB,
-                height: ROW_B + ROW_C + ROW_D + ROW_E,
-                width: 0.5,
-                background: 'var(--color-rule-mid)',
-                transform: 'translateX(-50%)',
+                left,
+                width,
+                top: yA,
+                height: ROW_A,
+                fontFamily: 'var(--font-serif)',
+                fontStyle: 'italic',
+                fontSize: phaseFontSize,
+                color: 'var(--color-ink-mute)',
               }}
               aria-hidden
-            />
-          ))}
+            >
+              {p.label}
+            </div>
+          );
+        })}
 
-          {/* row B: milestone dots */}
-          {MILESTONES.map((m) => {
-            const isCursor = m.key === cursor;
-            const isNow = m.key === now;
-            const dotBg = isNow
-              ? 'var(--color-accent)'
-              : isCursor
-                ? 'var(--color-ink)'
-                : 'var(--color-surface)';
-            const dotBorder = isNow
-              ? 'var(--color-accent)'
-              : isCursor
-                ? 'var(--color-ink)'
-                : 'var(--color-rule-mid)';
-            return (
-              <button
-                key={m.key}
-                type="button"
-                onClick={() => scrub(m.key)}
-                className="absolute"
-                style={{
-                  left: `${m.at * 100}%`,
-                  top: trackY - 12,
-                  width: 24,
-                  height: 24,
-                  transform: 'translateX(-50%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                aria-label={`Scrub to ${m.label}`}
-                aria-current={isCursor ? 'step' : undefined}
-              >
-                <span
-                  style={{
-                    width: 9,
-                    height: 9,
-                    borderRadius: 999,
-                    background: dotBg,
-                    border: `0.5px solid ${dotBorder}`,
-                    opacity: m.real || isCursor || isNow ? 1 : 0.6,
-                  }}
-                />
-              </button>
-            );
-          })}
+        {/* row B: track line */}
+        <div
+          className="absolute left-0 right-0"
+          style={{
+            top: trackY,
+            height: 0.5,
+            background: 'var(--color-rule-mid)',
+          }}
+          aria-hidden
+        />
 
-          {/* row C: milestone names */}
-          {MILESTONES.map((m) => {
-            const isCursor = m.key === cursor;
-            return (
-              <div
-                key={`${m.key}-label`}
-                className="absolute flex items-center justify-center"
-                style={{
-                  left: `${m.at * 100}%`,
-                  top: yC,
-                  height: ROW_C,
-                  transform: 'translateX(-50%)',
-                  fontFamily: 'var(--font-sans)',
-                  fontSize: 11.5,
-                  fontWeight: isCursor ? 500 : 400,
-                  color: m.real ? 'var(--color-ink)' : 'var(--color-ink-faint)',
-                  whiteSpace: 'nowrap',
-                  pointerEvents: 'none',
-                }}
-              >
-                {m.label}
-              </div>
-            );
-          })}
+        {/* phase tint band — barely visible thicker stripe under in-force */}
+        <div
+          className="absolute"
+          style={{
+            left: `${PHASES[1]!.from * 100}%`,
+            width: `${(PHASES[1]!.to - PHASES[1]!.from) * 100}%`,
+            top: trackY - 0.5,
+            height: 1.5,
+            background: 'rgba(31, 30, 29, 0.10)',
+          }}
+          aria-hidden
+        />
 
-          {/* row D: playhead arrow + italic "now" */}
+        {/* seam vertical hairlines spanning rows B–E */}
+        {SEAMS.map((seam) => (
           <div
-            className="absolute flex flex-col items-center"
+            key={`${seam.label}-line`}
+            className="absolute"
             style={{
-              left: `${nowSpec.at * 100}%`,
-              top: yD,
-              height: ROW_D,
+              left: `${seam.at * 100}%`,
+              top: yB,
+              height: ROW_B + ROW_C + ROW_D + ROW_E,
+              width: 0.5,
+              background: 'var(--color-rule-mid)',
               transform: 'translateX(-50%)',
-              pointerEvents: 'none',
+            }}
+            aria-hidden
+          />
+        ))}
+
+        {/* row B: milestone dots */}
+        {MILESTONES.map((m) => {
+          const isCursor = m.key === cursor;
+          const isNow = m.key === now;
+          const dotBg = isNow
+            ? 'var(--color-accent)'
+            : isCursor
+              ? 'var(--color-ink)'
+              : 'var(--color-surface)';
+          const dotBorder = isNow
+            ? 'var(--color-accent)'
+            : isCursor
+              ? 'var(--color-ink)'
+              : 'var(--color-rule-mid)';
+          return (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => scrub(m.key)}
+              className="absolute"
+              style={{
+                left: `${m.at * 100}%`,
+                top: trackY - 12,
+                width: 24,
+                height: 24,
+                transform: 'translateX(-50%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-label={`Scrub to ${m.label}`}
+              aria-current={isCursor ? 'step' : undefined}
+            >
+              <span
+                style={{
+                  width: compact ? 8 : 9,
+                  height: compact ? 8 : 9,
+                  borderRadius: 999,
+                  background: dotBg,
+                  border: `0.5px solid ${dotBorder}`,
+                  opacity: m.real || isCursor || isNow ? 1 : 0.6,
+                }}
+              />
+            </button>
+          );
+        })}
+
+        {/* row C: milestone names */}
+        {MILESTONES.map((m) => {
+          const isCursor = m.key === cursor;
+          return (
+            <div
+              key={`${m.key}-label`}
+              className="absolute flex items-center justify-center"
+              style={{
+                left: `${m.at * 100}%`,
+                top: yC,
+                height: ROW_C,
+                transform: 'translateX(-50%)',
+                fontFamily: 'var(--font-sans)',
+                fontSize: milestoneFontSize,
+                fontWeight: isCursor ? 500 : 400,
+                color: m.real ? 'var(--color-ink)' : 'var(--color-ink-faint)',
+                whiteSpace: 'nowrap',
+                pointerEvents: 'none',
+              }}
+            >
+              {m.label}
+            </div>
+          );
+        })}
+
+        {/* row D: playhead arrow + italic "now" */}
+        <div
+          className="absolute flex flex-col items-center"
+          style={{
+            left: `${nowSpec.at * 100}%`,
+            top: yD,
+            height: ROW_D,
+            transform: 'translateX(-50%)',
+            pointerEvents: 'none',
+          }}
+          aria-hidden
+        >
+          <svg width="9" height="5" viewBox="0 0 9 5" style={{ marginTop: -1 }}>
+            <path
+              d="M4.5 0 L0 5 L9 5 Z"
+              fill={playheadAtNow ? 'var(--color-accent)' : 'var(--color-ink-faint)'}
+            />
+          </svg>
+          <span
+            style={{
+              marginTop: 1,
+              fontFamily: 'var(--font-serif)',
+              fontStyle: 'italic',
+              fontSize: nowFontSize,
+              color: playheadAtNow ? 'var(--color-accent)' : 'var(--color-ink-faint)',
+              letterSpacing: '-0.005em',
+            }}
+          >
+            now
+          </span>
+        </div>
+
+        {/* row E: seam labels */}
+        {SEAMS.map((seam) => (
+          <div
+            key={seam.label}
+            className="absolute"
+            style={{
+              left: `${seam.at * 100}%`,
+              top: yE,
+              height: ROW_E,
+              transform: 'translateX(-50%)',
+              whiteSpace: 'nowrap',
+              fontFamily: 'var(--font-serif)',
+              fontStyle: 'italic',
+              fontSize: seamFontSize,
+              color: 'var(--color-ink-faint)',
+              letterSpacing: '-0.005em',
+              lineHeight: `${ROW_E}px`,
             }}
             aria-hidden
           >
-            <svg width="9" height="5" viewBox="0 0 9 5" style={{ marginTop: -1 }}>
-              <path
-                d="M4.5 0 L0 5 L9 5 Z"
-                fill={playheadAtNow ? 'var(--color-accent)' : 'var(--color-ink-faint)'}
-              />
-            </svg>
-            <span
-              style={{
-                marginTop: 1,
-                fontFamily: 'var(--font-serif)',
-                fontStyle: 'italic',
-                fontSize: 10.5,
-                color: playheadAtNow ? 'var(--color-accent)' : 'var(--color-ink-faint)',
-                letterSpacing: '-0.005em',
-              }}
-            >
-              now
-            </span>
+            {seam.label}
           </div>
-
-          {/* row E: seam labels */}
-          {SEAMS.map((seam) => (
-            <div
-              key={seam.label}
-              className="absolute"
-              style={{
-                left: `${seam.at * 100}%`,
-                top: yE,
-                height: ROW_E,
-                transform: 'translateX(-50%)',
-                whiteSpace: 'nowrap',
-                fontFamily: 'var(--font-serif)',
-                fontStyle: 'italic',
-                fontSize: 10.5,
-                color: 'var(--color-ink-faint)',
-                letterSpacing: '-0.005em',
-                lineHeight: `${ROW_E}px`,
-              }}
-              aria-hidden
-            >
-              {seam.label}
-            </div>
-          ))}
-        </div>
+        ))}
       </div>
-    </section>
+    </div>
   );
 }

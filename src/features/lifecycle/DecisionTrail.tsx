@@ -28,109 +28,153 @@ function formatTime(iso: string): string {
   return `${hh}:${mm}`;
 }
 
-export function DecisionTrail() {
+type Props = {
+  /** Position in the workstation: left rail (default) or right rail. */
+  side?: 'left' | 'right';
+  /** Width of the rail. */
+  width?: number;
+};
+
+export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
   const log = useRanBerri((s) => s.auditLog);
+  const borderClass = side === 'right' ? 'hairline-l' : 'hairline-r';
 
   return (
     <aside
-      className="hairline-r"
+      className={borderClass}
       style={{
+        width,
+        flex: `0 0 ${width}px`,
         background: 'var(--color-surface)',
-        height: '100%',
-        padding: '20px 22px',
-        minHeight: 480,
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
       }}
     >
-      <div className="mb-1 flex items-center justify-between">
+      <div
+        className="hairline-b flex items-center justify-between"
+        style={{ padding: '12px 16px', height: 44, flex: '0 0 auto' }}
+      >
         <div className="eyebrow">decision trail</div>
         <span
           className="mono"
           style={{
-            fontSize: 10.5,
+            fontSize: 10,
             color: 'var(--color-ink-faint)',
             letterSpacing: '0.06em',
           }}
         >
-          {log.length}
+          {log.length} events
         </span>
       </div>
-      <p
-        className="serif mb-5"
-        style={{
-          fontStyle: 'italic',
-          fontSize: 12,
-          color: 'var(--color-ink-mute)',
-          margin: 0,
-        }}
-      >
-        every meaningful state transition, in order.
-      </p>
 
-      {log.length === 0 ? (
-        <EmptyTrail />
-      ) : (
-        <ol className="relative" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          <div
-            className="absolute"
-            style={{
-              left: 6,
-              top: 4,
-              bottom: 4,
-              width: 0.5,
-              background: 'var(--color-rule)',
-            }}
-            aria-hidden
-          />
-          {log.map((evt) => (
-            <li
-              key={evt.id}
-              className="relative"
-              style={{ paddingLeft: 22, paddingBottom: 14 }}
-            >
-              <span
-                className="absolute"
-                style={{
-                  left: 3,
-                  top: 6,
-                  width: 7,
-                  height: 7,
-                  borderRadius: 999,
-                  background: 'var(--color-surface)',
-                  border: '0.5px solid var(--color-rule-mid)',
-                }}
-                aria-hidden
-              />
-              <div
-                className="flex items-baseline justify-between"
-                style={{ fontSize: 12, color: 'var(--color-ink)' }}
+      <div style={{ padding: '12px 16px 8px', flex: '0 0 auto' }}>
+        <p
+          className="serif"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 11.5,
+            color: 'var(--color-ink-mute)',
+            margin: 0,
+            lineHeight: 1.5,
+          }}
+        >
+          every meaningful state transition, in order.
+        </p>
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto', padding: '0 16px 16px' }}>
+        {log.length === 0 ? (
+          <EmptyTrail />
+        ) : (
+          <ol
+            className="relative"
+            style={{ listStyle: 'none', padding: 0, margin: 0 }}
+          >
+            <div
+              className="absolute"
+              style={{
+                left: 6,
+                top: 4,
+                bottom: 4,
+                width: 0.5,
+                background: 'var(--color-rule)',
+              }}
+              aria-hidden
+            />
+            {log.map((evt) => (
+              <li
+                key={evt.id}
+                className="relative"
+                style={{ paddingLeft: 22, paddingBottom: 14 }}
               >
-                <span style={{ fontWeight: 500 }}>{KIND_LABEL[evt.kind]}</span>
                 <span
-                  className="mono"
+                  className="absolute"
                   style={{
-                    fontSize: 10,
-                    color: 'var(--color-ink-faint)',
-                    letterSpacing: '0.04em',
+                    left: 3,
+                    top: 6,
+                    width: 7,
+                    height: 7,
+                    borderRadius: 999,
+                    background: 'var(--color-surface)',
+                    border: '0.5px solid var(--color-rule-mid)',
+                  }}
+                  aria-hidden
+                />
+                <div
+                  className="flex items-baseline justify-between"
+                  style={{ fontSize: 12, color: 'var(--color-ink)' }}
+                >
+                  <span style={{ fontWeight: 500 }}>{KIND_LABEL[evt.kind]}</span>
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 10,
+                      color: 'var(--color-ink-faint)',
+                      letterSpacing: '0.04em',
+                    }}
+                  >
+                    {formatTime(evt.at)}
+                  </span>
+                </div>
+                <div
+                  className="serif"
+                  style={{
+                    fontStyle: 'italic',
+                    fontSize: 11.5,
+                    color: 'var(--color-ink-mute)',
+                    marginTop: 2,
                   }}
                 >
-                  {formatTime(evt.at)}
-                </span>
-              </div>
-              <div
-                className="serif"
-                style={{
-                  fontStyle: 'italic',
-                  fontSize: 11.5,
-                  color: 'var(--color-ink-mute)',
-                  marginTop: 2,
-                }}
-              >
-                {formatActor(evt.actor)}
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
+                  {formatActor(evt.actor)}
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+
+      <div
+        className="hairline-t"
+        style={{
+          padding: '10px 16px',
+          flex: '0 0 auto',
+          background: 'var(--color-bg)',
+        }}
+      >
+        <p
+          className="serif"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 11.5,
+            color: 'var(--color-ink-faint)',
+            margin: 0,
+            lineHeight: 1.5,
+          }}
+        >
+          audit trail as the spine
+        </p>
+      </div>
     </aside>
   );
 }

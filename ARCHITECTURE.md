@@ -112,22 +112,42 @@ Modules 2&ndash;6 emit the kinds whose names match their stage
 `conflict.flagged`, `field.corrected`, `rating.computed`, `quote.issued`,
 `recommendation.generated`, `decision.recorded`, `artifact.stale`).
 
-## The cockpit shell
+## The two routes
+
+The app ships with a minimal hash router (`src/app/router.ts`):
+
+- **`/` &mdash; Cockpit.** The working product. Full-viewport workstation.
+  - `TopBar` (44px): wordmark, folio breadcrumb, environment pill, user.
+  - `QueueRail` (left, 268px): the inbox. Empty in module 1; module 2
+    seeds the Greenline submission as the first row.
+  - Canvas column: subject strip + embedded compact `LifecycleRibbon` +
+    body. The body fills the rest of the viewport and is empty until
+    module 2.
+  - `DecisionTrail` (right, 296px): reads the audit log directly.
+- **`#/pitch` &mdash; Pitch.** Document-style keynote layout reserved for
+  Lloyd&rsquo;s-grade stills. The same primitives, arranged as masthead
+  + editorial hero + ribbon-as-card. The cockpit is the product; the
+  pitch view is for screenshots.
 
 ```
 src/features/lifecycle/
-  Masthead.tsx          wordmark + folio + build, sentence case, hairline
-  Hero.tsx              editorial headline, &ldquo;cockpit&rdquo; in coral italic
-  LifecycleRibbon.tsx   5 milestones, 3 phases, 2 italic seams, coral playhead
-  Canvas.tsx            rail / body / inspector with three modes
-  DecisionTrail.tsx     left rail; reads auditLog directly
+  TopBar.tsx            workstation top strip (used by Cockpit)
+  Masthead.tsx          document-style header (used by Pitch)
+  Hero.tsx              editorial headline; &ldquo;cockpit&rdquo; in coral italic
+  LifecycleRibbon.tsx   bare ribbon; `compact` prop tightens for embedding
+  DecisionTrail.tsx     audit log rail; `side` prop flips border
+src/features/queue/
+  QueueRail.tsx         persistent inbox rail
+src/app/
+  App.tsx               route switch
+  router.ts             hash router (cockpit | pitch)
+  Cockpit.tsx           workstation composition
+  Pitch.tsx             keynote composition
 ```
 
-The body and inspector slots are deliberately empty in module 1. Module 2
-fills the body with the submission canvas (broker email at top, AI extraction
-in the margin, slip sealed underneath). The inspector slot opens when the
-canvas mode is `expanded`; later modules render the rating / quote / NTU
-panels there.
+The cockpit body is deliberately empty in module 1. Module 2 fills it
+with the submission canvas (broker email at top, AI extraction in the
+margin, slip sealed underneath).
 
 ## Folder map
 

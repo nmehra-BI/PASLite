@@ -51,9 +51,15 @@ the human disagreed.
 - Zustand store with `immer` and `localStorage` persistence. The
   `correctField` action invalidates every downstream artifact when an
   underwriter overrides a value.
-- Cockpit chrome: `Masthead`, `Hero`, `LifecycleRibbon` (5 milestones, 3
-  phases, 2 italic seam labels, coral playhead at &ldquo;now&rdquo;),
-  `Canvas` shell (rail / body / inspector), `DecisionTrail` rail.
+- **Cockpit (`/`)** — the workstation. Full viewport, no document
+  scrolling. Thin top bar with folio + environment + user; persistent
+  left `QueueRail` (inbox); canvas column with subject strip, embedded
+  compact `LifecycleRibbon` (5 milestones, 3 phases, 2 italic seam
+  labels, coral playhead), and body; persistent right `DecisionTrail`.
+- **Pitch (`#/pitch`)** — keynote/document layout for Lloyd&rsquo;s-grade
+  stills. Editorial hero with the &ldquo;cockpit, not orchestration
+  layer&rdquo; framing and the lifecycle ribbon as a card. Use this view
+  for screenshots; the cockpit is the working product.
 
 ## What&rsquo;s planned
 
