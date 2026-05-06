@@ -4,6 +4,8 @@ type Props = {
   binders: HistoricalBinder[];
   /** Compact layout for inline use inside detail cards. */
   compact?: boolean;
+  /** When provided, rows become buttons that open a sub-inspector. */
+  onRowClick?: (binder: HistoricalBinder) => void;
 };
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
@@ -12,7 +14,7 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   year: 'numeric',
 });
 
-export function SimilarBindersTable({ binders, compact = false }: Props) {
+export function SimilarBindersTable({ binders, compact = false, onRowClick }: Props) {
   if (binders.length === 0) {
     return (
       <div
@@ -27,21 +29,71 @@ export function SimilarBindersTable({ binders, compact = false }: Props) {
   return (
     <div
       style={{
-        display: 'grid',
-        gridTemplateColumns: compact
-          ? '70px 1fr 90px 60px 60px'
-          : '80px 1fr 110px 70px 70px 80px',
-        rowGap: 4,
-        columnGap: 14,
-        alignItems: 'baseline',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0,
       }}
     >
-      <Header compact={compact} />
+      <RowGrid compact={compact}>
+        <Header compact={compact} />
+      </RowGrid>
       {binders.map((b) => (
-        <BinderRow key={b.id} binder={b} compact={compact} />
+        <BinderRow
+          key={b.id}
+          binder={b}
+          compact={compact}
+          onClick={onRowClick ? () => onRowClick(b) : undefined}
+        />
       ))}
     </div>
   );
+}
+
+function RowGrid({
+  compact,
+  children,
+  asButton,
+  onClick,
+}: {
+  compact: boolean;
+  children: React.ReactNode;
+  asButton?: boolean;
+  onClick?: () => void;
+}) {
+  const style: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: compact
+      ? '70px 1fr 90px 60px 60px'
+      : '80px 1fr 110px 70px 70px 80px',
+    rowGap: 0,
+    columnGap: 14,
+    alignItems: 'baseline',
+    padding: '4px 6px',
+    borderRadius: 'var(--radius-button)',
+    textAlign: 'left',
+    width: '100%',
+    background: 'transparent',
+    cursor: asButton ? 'pointer' : 'default',
+    transition: 'background 120ms cubic-bezier(0.4,0,0.2,1)',
+  };
+  if (asButton) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={style}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'var(--color-sunken)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        {children}
+      </button>
+    );
+  }
+  return <div style={style}>{children}</div>;
 }
 
 function Header({ compact }: { compact: boolean }) {
@@ -71,9 +123,11 @@ function Header({ compact }: { compact: boolean }) {
 function BinderRow({
   binder,
   compact,
+  onClick,
 }: {
   binder: HistoricalBinder;
   compact: boolean;
+  onClick?: () => void;
 }) {
   const lr = binder.actualLossRatio;
   const lrText =
@@ -83,7 +137,7 @@ function BinderRow({
         ? 'in-force'
         : '—';
   return (
-    <>
+    <RowGrid compact={compact} asButton={!!onClick} onClick={onClick}>
       <span
         className="mono"
         style={{ fontSize: 11, color: 'var(--color-ink-mute)', letterSpacing: '0.04em' }}
@@ -131,6 +185,6 @@ function BinderRow({
       >
         {lrText}
       </span>
-    </>
+    </RowGrid>
   );
 }

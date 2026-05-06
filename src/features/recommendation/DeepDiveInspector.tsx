@@ -1,10 +1,17 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
+import type { HistoricalBinder, LossToCompetitor } from '@/lib/fixtures';
 import { useRanBerri } from '@/store';
 import { lookupBinder, lookupCompetitor, lookupLoss } from './recommendation-engine';
 import { SimilarBindersTable } from './SimilarBindersTable';
 import { SimilarLossesTable } from './SimilarLossesTable';
 import { CompetitiveIntelCard } from './CompetitiveIntelCard';
+import { RecordDetailModal } from './RecordDetailModal';
+
+type DetailTarget =
+  | { kind: 'binder'; record: HistoricalBinder }
+  | { kind: 'loss'; record: LossToCompetitor };
 
 type Props = { onClose: () => void };
 
@@ -17,6 +24,7 @@ type Props = { onClose: () => void };
  */
 export function DeepDiveInspector({ onClose }: Props) {
   const recommendation = useRanBerri((s) => s.recommendation);
+  const [detail, setDetail] = useState<DetailTarget | null>(null);
   const binders = recommendation.similarBinderIds
     .map(lookupBinder)
     .filter(Boolean) as NonNullable<ReturnType<typeof lookupBinder>>[];
@@ -173,12 +181,18 @@ export function DeepDiveInspector({ onClose }: Props) {
 
           {/* Section 3 — similar binders */}
           <Section title={`Similar binders (top ${binders.length})`}>
-            <SimilarBindersTable binders={binders} />
+            <SimilarBindersTable
+              binders={binders}
+              onRowClick={(b) => setDetail({ kind: 'binder', record: b })}
+            />
           </Section>
 
           {/* Section 4 — similar losses */}
           <Section title={`Similar losses (top ${losses.length})`}>
-            <SimilarLossesTable losses={losses} />
+            <SimilarLossesTable
+              losses={losses}
+              onRowClick={(l) => setDetail({ kind: 'loss', record: l })}
+            />
           </Section>
 
           {/* Section 5 — competitive intel */}
@@ -219,6 +233,10 @@ export function DeepDiveInspector({ onClose }: Props) {
           </Section>
         </div>
       </motion.aside>
+
+      {detail && (
+        <RecordDetailModal target={detail} onClose={() => setDetail(null)} />
+      )}
     </motion.div>
   );
 }

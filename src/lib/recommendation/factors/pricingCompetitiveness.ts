@@ -39,6 +39,13 @@ export function evaluatePricingCompetitiveness(
   // Broker target signal
   const belowTarget = brokerTarget !== null && ourPremium < brokerTarget;
 
+  // Hold-floor: highest premium the sharp competitor has won at on
+  // similar profiles. If our quote sits well above that, we have
+  // direct evidence we will lose to them on price.
+  const holdFloor = computeHoldFloor(target, losses, competitorIntel);
+  const wellAboveHoldFloor =
+    holdFloor !== null && holdFloor > 0 && ourPremium > holdFloor * 1.10;
+
   // Are we above the sharp competitor's typical winning band?
   let aboveSharpRange = false;
   if (sharpComp?.typicalDiscount && lossesToSharp.length > 0) {
@@ -46,22 +53,38 @@ export function evaluatePricingCompetitiveness(
     aboveSharpRange = expectedHigh > 0 && ourPremium > expectedHigh * 1.02;
   }
 
+  // Vote rules — pro-ntu wins when we have ≥2 sharp losses AND our
+  // quote is materially above the demonstrated hold floor.
   const vote: RecommendationFactor['vote'] =
-    lossesToSharp.length >= 2 ? 'neutral' : belowTarget ? 'pro-bind' : 'neutral';
+    lossesToSharp.length >= 2 && wellAboveHoldFloor
+      ? 'pro-ntu'
+      : lossesToSharp.length >= 2
+        ? 'neutral'
+        : belowTarget
+          ? 'pro-bind'
+          : 'neutral';
 
   const weight: RecommendationFactor['weight'] =
-    lossesToSharp.length >= 2 ? 'moderate' : 'low';
+    lossesToSharp.length >= 2 && wellAboveHoldFloor
+      ? 'high'
+      : lossesToSharp.length >= 2
+        ? 'moderate'
+        : 'low';
 
   const sharpName = sharpComp?.name ?? 'Sharp competitor';
   const rangeText = sharpComp?.typicalDiscount
     ? `${Math.abs(sharpComp.typicalDiscount.max * 100).toFixed(0)}-${Math.abs(sharpComp.typicalDiscount.min * 100).toFixed(0)}%`
     : 'an unknown amount';
+  const holdFloorText =
+    holdFloor !== null ? `£${holdFloor.toLocaleString('en-GB')}` : null;
   const rationale =
-    lossesToSharp.length >= 2
-      ? `${belowTarget ? 'Below broker target' : 'In line with broker target'} but ${sharpName} may undercut by ${rangeText} on similar profiles.`
-      : belowTarget
-        ? 'Below broker target; competitive pricing.'
-        : 'Pricing within market range.';
+    lossesToSharp.length >= 2 && wellAboveHoldFloor && holdFloorText
+      ? `Our £${ourPremium.toLocaleString('en-GB')} sits above ${sharpName}'s demonstrated hold floor of ${holdFloorText} on similar profiles; price-loss likely.`
+      : lossesToSharp.length >= 2
+        ? `${belowTarget ? 'Below broker target' : 'In line with broker target'} but ${sharpName} may undercut by ${rangeText} on similar profiles.`
+        : belowTarget
+          ? 'Below broker target; competitive pricing.'
+          : 'Pricing within market range.';
 
   return {
     id: 'FCT-003',
@@ -79,6 +102,8 @@ export function evaluatePricingCompetitiveness(
       brokerTarget,
       belowTarget,
       aboveSharpRange,
+      wellAboveHoldFloor,
+      holdFloor,
       similarLossCount: similarLosses.length,
       lossesToSharpCount: lossesToSharp.length,
       similarLossIds: similarLosses.slice(0, 5).map((r) => r.loss.id),

@@ -149,6 +149,32 @@ describe('similarity', () => {
   });
 });
 
+describe('FCT-003 hold-floor pricing rule', () => {
+  it('Greenline default: stays neutral (£38,265 within ~10% of £36k hold floor)', () => {
+    const r = runRecommendation(greenlineInputs());
+    const f = r.factors.find((x) => x.id === 'FCT-003')!;
+    expect(f.vote).not.toBe('pro-ntu');
+    const meta = f.metadata as { wellAboveHoldFloor: boolean };
+    expect(meta.wellAboveHoldFloor).toBe(false);
+  });
+
+  it('flips to pro-ntu when our premium is well above the sharp hold floor', () => {
+    const inputs = greenlineInputs();
+    // Push our premium materially above the demonstrated sharp hold
+    // floor (RegentMGA's max similar win) — a price-loss is now
+    // strongly indicated, so the factor must vote pro-ntu.
+    inputs.ourPremium = 90_000;
+    const r = runRecommendation(inputs);
+    const f = r.factors.find((x) => x.id === 'FCT-003')!;
+    const meta = f.metadata as { wellAboveHoldFloor: boolean; holdFloor: number };
+    expect(meta.wellAboveHoldFloor).toBe(true);
+    expect(meta.holdFloor).toBeGreaterThan(0);
+    expect(f.vote).toBe('pro-ntu');
+    expect(f.weight).toBe('high');
+    expect(f.rationale).toMatch(/hold floor/i);
+  });
+});
+
 describe('aggregate (override sensitivity)', () => {
   it('flips to NTU when 3+ factors are pro-ntu', () => {
     const inputs = greenlineInputs();

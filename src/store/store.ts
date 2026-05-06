@@ -664,7 +664,12 @@ export const useRanBerri = create<RanBerriState>()(
           throw new Error('actOnRecommendation: no active submission');
         }
         const state = get().submissionState;
-        if (state === 'referred' || state === 'declined') {
+        // 'refer' is congruent with the 'referred' terminal state — an
+        // underwriter recording their intent against the recommendation
+        // after the referral has fired is not a write to the submission,
+        // it's a log entry. Allow it through.
+        const isCongruentRefer = input.action === 'refer' && state === 'referred';
+        if ((state === 'referred' || state === 'declined') && !isCongruentRefer) {
           throw new Error('actOnRecommendation: submission is read-only');
         }
         const submissionId = submission.id;

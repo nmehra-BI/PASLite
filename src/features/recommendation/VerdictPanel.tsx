@@ -147,16 +147,13 @@ export function VerdictPanel({
 
       {referOpen && (
         <ReferralModal
-          onClose={() => {
-            setReferOpen(false);
-            // The triage referral action is the writer of submission.referred;
-            // we additionally record that the recommendation was acted on as 'refer'.
-            try {
-              actOn({ action: 'refer', actedBy: 'nm' });
-            } catch {
-              // already in terminal state
-            }
+          onBeforeSubmit={() => {
+            // Record the underwriter's intent against the recommendation
+            // before the modal advances state to 'referred'. Cancelling
+            // the modal never reaches this branch.
+            actOn({ action: 'refer', actedBy: 'nm' });
           }}
+          onClose={() => setReferOpen(false)}
         />
       )}
     </motion.div>

@@ -11,9 +11,17 @@ const REVIEWERS = [
   { id: 'dh', name: 'D. Holloway', title: 'Director, Specialty' },
 ];
 
-type Props = { onClose: () => void };
+type Props = {
+  onClose: () => void;
+  /**
+   * Optional hook fired *before* the referral state transition, only on
+   * successful submit. Lets callers (e.g. recommendation VerdictPanel)
+   * record an upstream event while the submission is still mutable.
+   */
+  onBeforeSubmit?: () => void;
+};
 
-export function ReferralModal({ onClose }: Props) {
+export function ReferralModal({ onClose, onBeforeSubmit }: Props) {
   const refer = useRanBerri((s) => s.referToSenior);
   const [reviewerId, setReviewerId] = useState(REVIEWERS[0]!.id);
   const [urgency, setUrgency] = useState<Urgency>('week');
@@ -26,6 +34,7 @@ export function ReferralModal({ onClose }: Props) {
   function handleSubmit() {
     setError(null);
     try {
+      onBeforeSubmit?.();
       refer({
         reviewer: reviewer.name,
         urgency,

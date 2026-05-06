@@ -9,9 +9,11 @@ const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
 export function SimilarLossesTable({
   losses,
   compact = false,
+  onRowClick,
 }: {
   losses: LossToCompetitor[];
   compact?: boolean;
+  onRowClick?: (loss: LossToCompetitor) => void;
 }) {
   if (losses.length === 0) {
     return (
@@ -24,23 +26,67 @@ export function SimilarLossesTable({
     );
   }
   return (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: compact
-          ? '70px 1fr 100px 100px 80px'
-          : '80px 1fr 120px 100px 100px 100px',
-        rowGap: 4,
-        columnGap: 14,
-        alignItems: 'baseline',
-      }}
-    >
-      <Header compact={compact} />
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <RowGrid compact={compact}>
+        <Header compact={compact} />
+      </RowGrid>
       {losses.map((l) => (
-        <LossRow key={l.id} loss={l} compact={compact} />
+        <LossRow
+          key={l.id}
+          loss={l}
+          compact={compact}
+          onClick={onRowClick ? () => onRowClick(l) : undefined}
+        />
       ))}
     </div>
   );
+}
+
+function RowGrid({
+  compact,
+  children,
+  asButton,
+  onClick,
+}: {
+  compact: boolean;
+  children: React.ReactNode;
+  asButton?: boolean;
+  onClick?: () => void;
+}) {
+  const style: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: compact
+      ? '70px 1fr 100px 100px 80px'
+      : '80px 1fr 120px 100px 100px 100px',
+    rowGap: 0,
+    columnGap: 14,
+    alignItems: 'baseline',
+    padding: '4px 6px',
+    borderRadius: 'var(--radius-button)',
+    textAlign: 'left',
+    width: '100%',
+    background: 'transparent',
+    cursor: asButton ? 'pointer' : 'default',
+    transition: 'background 120ms cubic-bezier(0.4,0,0.2,1)',
+  };
+  if (asButton) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={style}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = 'var(--color-sunken)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = 'transparent';
+        }}
+      >
+        {children}
+      </button>
+    );
+  }
+  return <div style={style}>{children}</div>;
 }
 
 function Header({ compact }: { compact: boolean }) {
@@ -70,12 +116,14 @@ function Header({ compact }: { compact: boolean }) {
 function LossRow({
   loss,
   compact,
+  onClick,
 }: {
   loss: LossToCompetitor;
   compact: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <>
+    <RowGrid compact={compact} asButton={!!onClick} onClick={onClick}>
       <span
         className="mono"
         style={{ fontSize: 11, color: 'var(--color-ink-mute)', letterSpacing: '0.04em' }}
@@ -126,6 +174,6 @@ function LossRow({
       >
         {loss.competitorWhoWon} · {loss.primaryReason}
       </span>
-    </>
+    </RowGrid>
   );
 }
