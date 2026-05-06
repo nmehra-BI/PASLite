@@ -46,11 +46,17 @@ the human disagreed.
   JetBrains Mono).
 - `Field<T>` primitive: `createField`, `extractField`, `correctField`,
   `effectiveValue`, `effectiveLayer`, `isCorrected`, `isStale`. Unit-tested.
+- Path helpers (`src/lib/paths`) and dependency graph (`src/lib/deps`):
+  per-artifact `sources` + `downstream` edges, with the `[*]` glob for
+  array elements. `affectedArtifacts(path)` returns the precise closure.
 - Audit log: append-only event union covering every meaningful state
   transition the later modules will emit.
-- Zustand store with `immer` and `localStorage` persistence. The
-  `correctField` action invalidates every downstream artifact when an
-  underwriter overrides a value.
+- Zustand store with `immer` and `localStorage` persistence (memory
+  fallback in non-browser contexts). `applyCorrection(path, correction)`
+  reads the field, stamps the underwriter layer, writes it back, and
+  invalidates only the artifact closure derived from the dependency
+  graph &mdash; not every artifact. Emits one `field.corrected` event
+  plus one `artifact.stale` per invalidated artifact.
 - **Cockpit (`/`)** — the workstation. Full viewport, no document
   scrolling. Thin top bar with folio + environment + user; persistent
   left `QueueRail` (inbox); canvas column with subject strip, embedded

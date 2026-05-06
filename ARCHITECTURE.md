@@ -95,13 +95,49 @@ RanBerriState {
 
 Two invariants the store enforces, which later modules must respect:
 
-1. **Field corrections invalidate every artifact.** `correctField` clears
-   every `artifacts[*].computedAt`. If a future module wants finer-grained
-   invalidation (only the affected branch of the DAG), it must replace this
-   action; do not silently skip it elsewhere.
-2. **Audit events are append-only.** Use `appendAuditEvent`; never mutate or
-   remove an existing entry. The DecisionTrail rail reads from this list
-   directly.
+1. **Field corrections invalidate the artifact closure derived from the
+   dependency graph.** `applyCorrection(path, correction)` reads the
+   `Field` at `path`, stamps `underwriterCorrected`, writes it back into
+   the submission tree, then walks `DEPENDENCY_GRAPH` to find every
+   artifact whose `sources` include the corrected path (or include a
+   pattern that matches it via the `[*]` glob), takes the transitive
+   closure over `downstream` edges, and clears `computedAt` on exactly
+   that set. Conservative fallback: if no artifact registers the path
+   as a source, every artifact is invalidated &mdash; the graph is an
+   optimisation, not a safety boundary. Recomputation remains explicit:
+   the user clicks rerun.
+2. **Audit events are append-only.** Use `appendAuditEvent`; never
+   mutate or remove an existing entry. Every `applyCorrection` call
+   writes one `field.corrected` plus one `artifact.stale` per
+   invalidated artifact, so the DecisionTrail shows both the cause and
+   each effect.
+
+## The dependency graph
+
+`src/lib/deps/graph.ts` declares the DAG:
+
+```
+    ┌──── enrichment ───┐
+    │         │         │
+    ▼         ▼         │
+ conflicts ── rating ── quote ── recommendation
+```
+
+Each artifact has `sources` (submission field paths it reads from,
+supporting `sites[*].address` style globs) and `downstream` (other
+artifacts that consume its output). `affectedArtifacts(path)` finds
+direct hits via `pathMatches`, then takes the transitive closure over
+`downstream`.
+
+Worked example. Correcting `insured.turnover`:
+
+- Direct hits: `conflicts` and `rating` register `insured.turnover` in
+  `sources`. `enrichment` does not.
+- Closure adds: `quote` (downstream of rating + conflicts),
+  `recommendation` (downstream of all three).
+- Result: `{conflicts, rating, quote, recommendation}` invalidated;
+  `enrichment` stays valid because Companies House data does not depend
+  on turnover.
 
 ## The audit event union
 
@@ -153,9 +189,10 @@ margin, slip sealed underneath).
 
 ```
 src/
-  app/              App.tsx, top-level composition
+  app/              App.tsx, router, Cockpit, Pitch
   features/
     lifecycle/      module 1 — the cockpit shell
+    queue/          QueueRail (left inbox)
     intake/         module 2 (planned)
     enrichment/     module 3 (planned)
     rating/         module 4 (planned)
@@ -164,9 +201,11 @@ src/
   components/       shared UI primitives — Button, Pill, Card, Hairline
   lib/
     field/          Field<T> + helpers + tests
+    paths/          getAtPath, setAtPath, pathMatches (glob)
+    deps/           ArtifactKey, DEPENDENCY_GRAPH, affectedArtifacts, isField
     audit/          AuditEvent types + append-only log helpers
     fixtures/       submission domain types (Greenline fixture lands in M2)
-  store/            Zustand store
+  store/            Zustand store + integration tests
   styles/           global.css with Tailwind v4 @theme tokens
 ```
 
