@@ -21,6 +21,7 @@ import {
   similarity,
   type RiskProfile,
 } from './similarity';
+import type { CompetitorSwitch } from './competitorSwitches';
 import type { Recommendation } from './types';
 
 export type RecommendationInputs = {
@@ -32,6 +33,13 @@ export type RecommendationInputs = {
   /** Resolved gap state from enrichment, used by FCT-004. */
   fireSuppressionResolved: boolean;
   fireSuppressionRequested: boolean;
+  /**
+   * Mid-term competitor switches projected from the audit log. These
+   * are bound policies the MGA cancelled in favour of a competitor;
+   * a stronger signal than NTUs because the competitor displaced an
+   * in-force risk. Optional — old call sites remain valid.
+   */
+  competitorSwitches?: CompetitorSwitch[];
 };
 
 /** Project the live submission down to a risk profile. */
@@ -104,6 +112,21 @@ export function runRecommendation(
     inputs.losses,
     inputs.competitorIntel,
   );
+  // Annotate FCT-003 with mid-term switches (the cancellation
+  // feedback loop). These are stronger signals than NTUs and the
+  // deep-dive inspector renders them as a distinct "mid-term switch"
+  // group in the competitive intel section.
+  if (inputs.competitorSwitches && inputs.competitorSwitches.length > 0) {
+    const meta = (fct3.metadata ?? {}) as Record<string, unknown>;
+    meta.midTermSwitches = inputs.competitorSwitches.map((s) => ({
+      policyRef: s.policyRef,
+      toCompetitor: s.toCompetitor,
+      cancelledAt: s.cancelledAt,
+      retainedPremium: s.retainedPremium,
+      notes: s.notes,
+    }));
+    fct3.metadata = meta;
+  }
   const fct4 = evaluateSubjectivityRisk(
     inputs.submission,
     inputs.fireSuppressionResolved,

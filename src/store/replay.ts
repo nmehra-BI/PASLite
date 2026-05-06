@@ -311,6 +311,13 @@ import type {
 import { freshMta, freshPolicy } from '@/lib/mta/types';
 export { freshMta, freshPolicy } from '@/lib/mta/types';
 export type { MtaReplay, PolicyReplay } from '@/lib/mta/types';
+import type {
+  CancellationHashRecord,
+  CancellationReplay,
+} from '@/lib/cancellation/types';
+import { freshCancellation } from '@/lib/cancellation/types';
+export { freshCancellation } from '@/lib/cancellation/types';
+export type { CancellationReplay } from '@/lib/cancellation/types';
 
 export type BindReplay = {
   phase: BindCeremonyPhase;
@@ -393,7 +400,9 @@ export type SubmissionLifecycleState =
   | 'ntu-pending'
   | 'bound'
   | 'mta-pending'
-  | 'in-force-with-mta';
+  | 'in-force-with-mta'
+  | 'cancel-pending'
+  | 'cancelled';
 
 export type ReferralRecord = {
   reviewer: string;
@@ -437,6 +446,8 @@ export type ReplayResult = {
   mta: MtaReplay;
   /** Policy version stack: baseBind + chronological MTAs. */
   policy: PolicyReplay;
+  /** Active or terminal cancellation workflow (module 10). */
+  cancellation: CancellationReplay;
 };
 
 export function freshArtifacts(): Record<ArtifactKey, ArtifactState> {
@@ -497,6 +508,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
   const replayBoundLedger: HistoricalBinder[] = [];
   const mta = freshMta();
   const policy = freshPolicy();
+  const cancellation = freshCancellation();
 
   for (const e of events) {
     switch (e.kind) {
@@ -1325,6 +1337,133 @@ export function replay(events: AuditEvent[]): ReplayResult {
         }
         break;
 
+      // ---------- Cancellation (module 10) ----------
+      case 'cancellation.requestReceived':
+        cancellation.phase = 'reason-review';
+        cancellation.request = {
+          id: e.cancellationId,
+          broker: e.broker,
+          subject: e.subject,
+          effectiveDate: e.effectiveDate,
+          reasonCategory: e.reasonCategory,
+          reasonDetail: e.reasonDetail,
+          switchingTo: e.switchingTo ?? null,
+          receivedAt: e.at,
+        };
+        if (submissionState === 'bound' || submissionState === 'in-force-with-mta') {
+          submissionState = 'cancel-pending';
+        }
+        break;
+
+      case 'cancellation.basisSelected':
+        cancellation.basis = e.basis;
+        break;
+
+      case 'cancellation.basisOverridden':
+        cancellation.basisOverride = {
+          from: e.from,
+          to: e.to,
+          reason: e.reason,
+          overriddenBy: e.overriddenBy,
+          at: e.at,
+        };
+        cancellation.basis = e.to;
+        // Override staleness — recompute required.
+        cancellation.calc = null;
+        cancellation.bordereau = null;
+        cancellation.hashes = [];
+        break;
+
+      case 'cancellation.runoffClaimCaptured':
+        cancellation.runoffClaim = {
+          ref: e.claimRef,
+          description: e.description,
+          reserveAmount: e.reserveAmount,
+          capturedAt: e.at,
+          capturedBy: e.capturedBy,
+        };
+        if (cancellation.phase === 'reason-review') {
+          cancellation.phase = 'runoff-pending';
+        }
+        break;
+
+      case 'cancellation.refundComputed':
+        cancellation.calc = {
+          annualPremium: e.annualPremium,
+          daysRemaining: e.daysRemaining,
+          daysInTerm: e.daysInTerm,
+          basis: e.basis,
+          refund: e.refund,
+          commissionClawback: e.commissionClawback,
+          clawbackKind: e.clawbackKind,
+          bordereauNet: e.bordereauNet,
+          sha: e.sha,
+        };
+        cancellation.phase = 'computed';
+        break;
+
+      case 'cancellation.hashConfirmed': {
+        const idx = cancellation.hashes.findIndex((h) => h.id === e.hashId);
+        const next: CancellationHashRecord = {
+          id: e.hashId,
+          status: 'confirmed',
+          artefactSha: e.artefactSha,
+          expectedSha: e.artefactSha,
+          confirmedAt: e.at,
+          confirmedBy: e.confirmedBy,
+          overrideReason: null,
+        };
+        if (idx >= 0) cancellation.hashes[idx] = next;
+        else cancellation.hashes.push(next);
+        cancellation.phase = 'ceremony-in-progress';
+        break;
+      }
+
+      case 'cancellation.hashOverridden': {
+        const idx = cancellation.hashes.findIndex((h) => h.id === e.hashId);
+        const next: CancellationHashRecord = {
+          id: e.hashId,
+          status: 'overridden',
+          artefactSha: e.currentSha,
+          expectedSha: e.expectedSha,
+          confirmedAt: e.at,
+          confirmedBy: e.overriddenBy,
+          overrideReason: e.reason,
+        };
+        if (idx >= 0) cancellation.hashes[idx] = next;
+        else cancellation.hashes.push(next);
+        break;
+      }
+
+      case 'cancellation.committed':
+        cancellation.phase = 'committed';
+        cancellation.committedAt = e.at;
+        cancellation.signedBy = e.signedBy;
+        cancellation.endorsementRef = e.endorsementRef;
+        cancellation.endorsementNumber = e.endorsementNumber;
+        submissionState = 'cancelled';
+        break;
+
+      case 'cancellation.endorsementSent':
+        cancellation.sentAt = e.at;
+        cancellation.sentBy = e.sentBy;
+        cancellation.phase = 'sent';
+        break;
+
+      case 'bordereau.entryWritten':
+        cancellation.bordereau = {
+          netMovement: e.netMovement,
+          syndicate: e.syndicate,
+          line: e.line,
+          writtenAt: e.at,
+        };
+        break;
+
+      case 'competitor.switchRecorded':
+        // Handled by the recommendation-engine projection, not the
+        // materialised cancellation slice. No state change here.
+        break;
+
       // Pass-through:
       case 'submission.received':
       case 'gap.flagged':
@@ -1354,6 +1493,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
     boundLedger: replayBoundLedger,
     mta,
     policy,
+    cancellation,
   };
 }
 

@@ -623,6 +623,123 @@ export type AuditEvent = AuditEventBase &
         mtaId: string;
         affected: Array<'context-review' | 'delta-rating' | 'capacity' | 'schedule'>;
       }
+
+    // Cancellation (module 10)
+    | {
+        kind: 'cancellation.requestReceived';
+        submissionId: string;
+        cancellationId: string;
+        broker: string;
+        subject: string;
+        effectiveDate: ISO8601;
+        reasonCategory:
+          | 'insured-non-renewal'
+          | 'insured-cancel-other'
+          | 'non-payment'
+          | 'mga-cancel-underwriting'
+          | 'mga-cause-misrep';
+        reasonDetail: string;
+        /** When set, the broker has named the competitor the insured is
+         *  switching to — surfaces in FCT-003 as a "mid-term switch". */
+        switchingTo?: string;
+      }
+    | {
+        kind: 'cancellation.basisSelected';
+        submissionId: string;
+        cancellationId: string;
+        basis: 'short-rate' | 'pro-rata' | 'void-ab-initio';
+      }
+    | {
+        kind: 'cancellation.basisOverridden';
+        submissionId: string;
+        cancellationId: string;
+        from: 'short-rate' | 'pro-rata' | 'void-ab-initio';
+        to: 'short-rate' | 'pro-rata' | 'void-ab-initio';
+        reason: string;
+        overriddenBy: string;
+      }
+    | {
+        kind: 'cancellation.runoffClaimCaptured';
+        submissionId: string;
+        cancellationId: string;
+        claimRef: string;
+        description: string;
+        reserveAmount: number;
+        capturedBy: string;
+      }
+    | {
+        kind: 'cancellation.refundComputed';
+        submissionId: string;
+        cancellationId: string;
+        annualPremium: number;
+        daysRemaining: number;
+        daysInTerm: number;
+        basis: 'short-rate' | 'pro-rata' | 'void-ab-initio';
+        refund: number;
+        commissionClawback: number;
+        clawbackKind: 'partial' | 'full' | 'none';
+        bordereauNet: number;
+        sha: string;
+      }
+    | {
+        kind: 'cancellation.hashConfirmed';
+        submissionId: string;
+        cancellationId: string;
+        hashId: 'refund-basis' | 'runoff-claim' | 'bordereau';
+        artefactSha: string;
+        confirmedBy: string;
+      }
+    | {
+        kind: 'cancellation.hashOverridden';
+        submissionId: string;
+        cancellationId: string;
+        hashId: 'refund-basis' | 'runoff-claim' | 'bordereau';
+        expectedSha: string;
+        currentSha: string;
+        reason: string;
+        overriddenBy: string;
+      }
+    | {
+        kind: 'cancellation.committed';
+        submissionId: string;
+        cancellationId: string;
+        endorsementRef: string;
+        endorsementNumber: number;
+        effectiveDate: ISO8601;
+        basis: 'short-rate' | 'pro-rata' | 'void-ab-initio';
+        refund: number;
+        commissionClawback: number;
+        bordereauNet: number;
+        signedBy: string;
+        hashes: Array<{ id: string; sha: string; confirmedAt: ISO8601 }>;
+      }
+    | {
+        kind: 'cancellation.endorsementSent';
+        submissionId: string;
+        cancellationId: string;
+        endorsementRef: string;
+        recipient: string;
+        coveringNote: string;
+        sentBy: string;
+      }
+    | {
+        kind: 'bordereau.entryWritten';
+        submissionId: string;
+        cancellationId: string;
+        netMovement: number;
+        syndicate: string;
+        line: number;
+      }
+    | {
+        kind: 'competitor.switchRecorded';
+        submissionId: string;
+        policyRef: string;
+        toCompetitor: string;
+        cancelledAt: ISO8601;
+        retainedPremium: number;
+        switchType: 'mid-term-switch';
+        notes: string;
+      }
   );
 
 export type AuditEventKind = AuditEvent['kind'];

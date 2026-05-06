@@ -51,6 +51,11 @@ import type {
   PolicyReplay,
   PolicyVersionRecord,
 } from '@/lib/mta/types';
+import { freshCancellation } from '@/lib/cancellation/types';
+import type {
+  CancellationHashRecord,
+  CancellationReplay,
+} from '@/lib/cancellation/types';
 import type { HashId } from '@/lib/bind/types';
 
 /**
@@ -108,6 +113,8 @@ export type RanBerriState = {
   mta: MtaReplay;
   /** Policy version stack: baseBind + chronological MTAs. */
   policy: PolicyReplay;
+  /** Active or terminal cancellation workflow (module 10). */
+  cancellation: CancellationReplay;
   lifecycle: {
     cursor: LifecycleMilestone;
     now: LifecycleMilestone;
@@ -320,6 +327,7 @@ export const useRanBerri = create<RanBerriState>()(
       boundLedger: [],
       mta: freshMta(),
       policy: freshPolicy(),
+      cancellation: freshCancellation(),
       lifecycle: { cursor: 'quote', now: 'quote' },
       ui: {
         canvasMode: 'compact',
@@ -824,6 +832,7 @@ export const useRanBerri = create<RanBerriState>()(
           s.postBind = freshPostBind();
           s.mta = freshMta();
           s.policy = freshPolicy();
+          s.cancellation = freshCancellation();
           // Preserve boundLedger across reset — the moat compounds.
           // Use deepReset to wipe it.
           s.lifecycle = { cursor: 'quote', now: 'quote' };
@@ -868,6 +877,7 @@ export const useRanBerri = create<RanBerriState>()(
           merged.postBind = result.postBind;
           merged.mta = result.mta;
           merged.policy = result.policy;
+          merged.cancellation = result.cancellation;
           // Merge the persisted ledger with whatever this log replayed
           // — both contribute, and we de-duplicate on policyRef so
           // re-loading an already-recorded bind doesn't double-count.
@@ -1599,6 +1609,135 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
       ) {
         s.mta.phase = 'context-review';
       }
+      break;
+
+    // ---------- cancellation (module 10) ----------
+    case 'cancellation.requestReceived':
+      s.cancellation.phase = 'reason-review';
+      s.cancellation.request = {
+        id: e.cancellationId,
+        broker: e.broker,
+        subject: e.subject,
+        effectiveDate: e.effectiveDate,
+        reasonCategory: e.reasonCategory,
+        reasonDetail: e.reasonDetail,
+        switchingTo: e.switchingTo ?? null,
+        receivedAt: e.at,
+      };
+      if (s.submissionState === 'bound' || s.submissionState === 'in-force-with-mta') {
+        s.submissionState = 'cancel-pending';
+      }
+      break;
+
+    case 'cancellation.basisSelected':
+      s.cancellation.basis = e.basis;
+      break;
+
+    case 'cancellation.basisOverridden':
+      s.cancellation.basisOverride = {
+        from: e.from,
+        to: e.to,
+        reason: e.reason,
+        overriddenBy: e.overriddenBy,
+        at: e.at,
+      };
+      s.cancellation.basis = e.to;
+      s.cancellation.calc = null;
+      s.cancellation.bordereau = null;
+      s.cancellation.hashes = [];
+      break;
+
+    case 'cancellation.runoffClaimCaptured':
+      s.cancellation.runoffClaim = {
+        ref: e.claimRef,
+        description: e.description,
+        reserveAmount: e.reserveAmount,
+        capturedAt: e.at,
+        capturedBy: e.capturedBy,
+      };
+      if (s.cancellation.phase === 'reason-review') {
+        s.cancellation.phase = 'runoff-pending';
+      }
+      break;
+
+    case 'cancellation.refundComputed':
+      s.cancellation.calc = {
+        annualPremium: e.annualPremium,
+        daysRemaining: e.daysRemaining,
+        daysInTerm: e.daysInTerm,
+        basis: e.basis,
+        refund: e.refund,
+        commissionClawback: e.commissionClawback,
+        clawbackKind: e.clawbackKind,
+        bordereauNet: e.bordereauNet,
+        sha: e.sha,
+      };
+      s.cancellation.phase = 'computed';
+      break;
+
+    case 'cancellation.hashConfirmed': {
+      const idx = s.cancellation.hashes.findIndex((h) => h.id === e.hashId);
+      const next: CancellationHashRecord = {
+        id: e.hashId,
+        status: 'confirmed',
+        artefactSha: e.artefactSha,
+        expectedSha: e.artefactSha,
+        confirmedAt: e.at,
+        confirmedBy: e.confirmedBy,
+        overrideReason: null,
+      };
+      if (idx >= 0) s.cancellation.hashes[idx] = next;
+      else s.cancellation.hashes.push(next);
+      s.cancellation.phase = 'ceremony-in-progress';
+      break;
+    }
+
+    case 'cancellation.hashOverridden': {
+      const idx = s.cancellation.hashes.findIndex((h) => h.id === e.hashId);
+      const next: CancellationHashRecord = {
+        id: e.hashId,
+        status: 'overridden',
+        artefactSha: e.currentSha,
+        expectedSha: e.expectedSha,
+        confirmedAt: e.at,
+        confirmedBy: e.overriddenBy,
+        overrideReason: e.reason,
+      };
+      if (idx >= 0) s.cancellation.hashes[idx] = next;
+      else s.cancellation.hashes.push(next);
+      break;
+    }
+
+    case 'cancellation.committed':
+      s.cancellation.phase = 'committed';
+      s.cancellation.committedAt = e.at;
+      s.cancellation.signedBy = e.signedBy;
+      s.cancellation.endorsementRef = e.endorsementRef;
+      s.cancellation.endorsementNumber = e.endorsementNumber;
+      s.submissionState = 'cancelled';
+      // Move lifecycle 'now' to Cancel — fills the second seam and
+      // hides Renewal in the ribbon.
+      s.lifecycle.now = 'cancel';
+      s.lifecycle.cursor = 'cancel';
+      break;
+
+    case 'cancellation.endorsementSent':
+      s.cancellation.sentAt = e.at;
+      s.cancellation.sentBy = e.sentBy;
+      s.cancellation.phase = 'sent';
+      break;
+
+    case 'bordereau.entryWritten':
+      s.cancellation.bordereau = {
+        netMovement: e.netMovement,
+        syndicate: e.syndicate,
+        line: e.line,
+        writtenAt: e.at,
+      };
+      break;
+
+    case 'competitor.switchRecorded':
+      // Surfaced by recommendation engine; no state change.
       break;
 
     case 'slip.fieldEdited':

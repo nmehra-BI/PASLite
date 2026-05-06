@@ -7,7 +7,8 @@ export type AuditFilterKey =
   | 'resolutions'
   | 'hashes'
   | 'bind'
-  | 'mta';
+  | 'mta'
+  | 'cancellation';
 
 const FILTER_LABELS: Array<{ key: AuditFilterKey; label: string }> = [
   { key: 'all', label: 'all events' },
@@ -17,6 +18,7 @@ const FILTER_LABELS: Array<{ key: AuditFilterKey; label: string }> = [
   { key: 'hashes', label: 'hashes' },
   { key: 'bind', label: 'bind events' },
   { key: 'mta', label: 'mta events' },
+  { key: 'cancellation', label: 'cancellation' },
 ];
 
 export function eventMatchesFilter(
@@ -47,11 +49,20 @@ export function eventMatchesFilter(
       kind === 'bind.hashFailed' ||
       kind === 'bind.hashOverridden' ||
       kind === 'mta.hashConfirmed' ||
-      kind === 'mta.hashOverridden'
+      kind === 'mta.hashOverridden' ||
+      kind === 'cancellation.hashConfirmed' ||
+      kind === 'cancellation.hashOverridden'
     );
   }
   if (filter === 'bind') return kind.startsWith('bind.') || kind.startsWith('schedule.');
   if (filter === 'mta') return kind.startsWith('mta.');
+  if (filter === 'cancellation') {
+    return (
+      kind.startsWith('cancellation.') ||
+      kind === 'bordereau.entryWritten' ||
+      kind === 'competitor.switchRecorded'
+    );
+  }
   return false;
 }
 

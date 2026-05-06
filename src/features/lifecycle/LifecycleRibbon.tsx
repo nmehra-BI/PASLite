@@ -74,6 +74,13 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
   const nowSpec = MILESTONES.find((m) => m.key === now) ?? MILESTONES[0]!;
   const playheadAtNow = cursor === now;
   const isBound = bindPhase === 'committed';
+  const cancellation = useRanBerri((s) => s.cancellation);
+  const isCancelled = cancellation.phase === 'committed' || cancellation.phase === 'sent';
+  // Hide Renewal once the policy is cancelled — there is no renewal
+  // to forecast on a terminated policy.
+  const visibleMilestones = MILESTONES.filter((m) =>
+    isCancelled ? m.key !== 'renewal' : true,
+  );
 
   // MTA mini-markers between Bind (0.26) and MTA-04 (0.5). Each
   // committed endorsement gets a small filled coral dot at a fraction
@@ -191,7 +198,10 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
         {/* seam vertical hairlines spanning rows B–E */}
         {SEAMS.map((seam, i) => {
           const isBecomePolicySeam = i === 0;
-          const isFilled = isBecomePolicySeam && isBound;
+          const isPolicyTerminatesSeam = i === 1;
+          const isFilled =
+            (isBecomePolicySeam && isBound) ||
+            (isPolicyTerminatesSeam && isCancelled);
           return (
             <div
               key={`${seam.label}-line`}
@@ -275,7 +285,7 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
         ))}
 
         {/* row B: milestone dots */}
-        {MILESTONES.map((m) => {
+        {visibleMilestones.map((m) => {
           const isCursor = m.key === cursor;
           const isNow = m.key === now;
           const dotBg = isNow
@@ -322,7 +332,7 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
         })}
 
         {/* row C: milestone names */}
-        {MILESTONES.map((m) => {
+        {visibleMilestones.map((m) => {
           const isCursor = m.key === cursor;
           return (
             <div

@@ -6,6 +6,7 @@ import {
   getLossesToCompetitors,
 } from '@/lib/fixtures';
 import { runRecommendation } from '@/lib/recommendation';
+import { projectCompetitorSwitches } from '@/lib/recommendation/competitorSwitches';
 
 const SUBMISSION_ID = 'sub_greenline_2026_05';
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -68,6 +69,8 @@ export async function runRecommendationCinematic(opts?: {
   // signal for the next risk's recommendation.
   const allBinders = [...getHistoricalBinders(), ...main.boundLedger];
 
+  const competitorSwitches = projectCompetitorSwitches(main.auditLog);
+
   const recommendation = runRecommendation({
     submission,
     ourPremium: ratingOutput.premium,
@@ -76,6 +79,7 @@ export async function runRecommendationCinematic(opts?: {
     competitorIntel: getCompetitiveIntel(),
     fireSuppressionResolved,
     fireSuppressionRequested,
+    competitorSwitches,
   });
 
   // Reveal factors one by one.

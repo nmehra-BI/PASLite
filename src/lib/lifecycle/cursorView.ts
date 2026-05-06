@@ -18,7 +18,7 @@
 
 import type { LifecycleMilestone } from '@/lib/fixtures';
 
-export type CursorViewKind = 'live' | 'bind-v1' | 'pre-bind';
+export type CursorViewKind = 'live' | 'bind-v1' | 'pre-bind' | 'mta-v2' | 'cancelled';
 
 export type CursorView = {
   kind: CursorViewKind;
@@ -37,26 +37,41 @@ export function deriveCursorView(input: {
   now: LifecycleMilestone;
   baseBindAt: string | null;
   versionCount: number;
-  /** Earliest committed MTA's signedAt, if any. Used as the upper
-   *  bound for "v1" subjectivity filtering: anything created before
-   *  the first MTA committed belongs to the bound state. */
+  /** Earliest committed MTA's signedAt, if any. */
   firstMtaSignedAt?: string | null;
+  /** Cancellation committedAt, if any. */
+  cancelledAt?: string | null;
+  /** True when the policy is currently cancelled (now == 'cancel'). */
+  cancelled?: boolean;
 }): CursorView {
   const scrubbed = input.cursor !== input.now;
-  if (!scrubbed) return { kind: 'live', scrubbed, effectiveAt: null };
-  if (input.cursor === 'bind' && input.versionCount > 0) {
-    return {
-      kind: 'bind-v1',
-      scrubbed,
-      // Filter is "strictly before the first MTA committed". This
-      // avoids the 1-ms-cascade timestamp issue where bind-time
-      // subjectivity.created events have an at slightly after
-      // baseBindAt yet still belong to v1.
-      effectiveAt: input.firstMtaSignedAt ?? input.baseBindAt,
-    };
+
+  // 'cancel' as the live cursor (now) means the policy is in its
+  // terminal state. The full cancellation surface renders.
+  if (!scrubbed) {
+    if (input.cursor === 'cancel') return { kind: 'cancelled', scrubbed, effectiveAt: null };
+    return { kind: 'live', scrubbed, effectiveAt: null };
   }
+
+  // Scrubbed back to 'bind' with later events on the timeline →
+  // reconstruct the v1 view. Filter "strictly before the first MTA
+  // committed" (or before the cancellation if no MTA exists), so
+  // bind-time cascade events still belong to v1 even if their `at`
+  // is 1 ms after baseBindAt.
+  if (input.cursor === 'bind' && (input.versionCount > 0 || input.cancelled)) {
+    const upper = input.firstMtaSignedAt ?? input.cancelledAt ?? input.baseBindAt;
+    return { kind: 'bind-v1', scrubbed, effectiveAt: upper ?? null };
+  }
+
+  // Scrubbed to 'mta-04' while now is 'cancel' → v2 reconstruction
+  // (the MTA state, before cancellation).
+  if (input.cursor === 'mta-04' && input.cancelled) {
+    return { kind: 'mta-v2', scrubbed, effectiveAt: input.cancelledAt ?? null };
+  }
+
   if (input.cursor === 'quote' || input.cursor === 'quoted') {
     return { kind: 'pre-bind', scrubbed, effectiveAt: null };
   }
+
   return { kind: 'live', scrubbed, effectiveAt: null };
 }

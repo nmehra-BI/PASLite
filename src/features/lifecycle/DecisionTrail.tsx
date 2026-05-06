@@ -91,6 +91,18 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'mta.scheduleSent': 'Revised schedule sent',
   'mta.fieldCorrected': 'MTA field corrected',
   'mta.markedStale': 'MTA marked stale',
+  // Module 10 — cancellation
+  'cancellation.requestReceived': 'Cancellation request received',
+  'cancellation.basisSelected': 'Refund basis selected',
+  'cancellation.basisOverridden': 'Refund basis overridden',
+  'cancellation.runoffClaimCaptured': 'Run-off claim captured',
+  'cancellation.refundComputed': 'Refund computed',
+  'cancellation.hashConfirmed': 'Cancellation hash confirmed',
+  'cancellation.hashOverridden': 'Cancellation hash overridden',
+  'cancellation.committed': 'Cancellation committed',
+  'cancellation.endorsementSent': 'Cancellation endorsement sent',
+  'bordereau.entryWritten': 'Bordereau entry written',
+  'competitor.switchRecorded': 'Competitor switch recorded',
 };
 
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {
@@ -138,8 +150,18 @@ function dotTone(kind: AuditEvent['kind']): string {
     return 'var(--color-accent)';
   if (kind === 'submission.declined' || kind === 'quote.markedStale' || kind === 'bind.hashFailed')
     return 'var(--color-danger)';
-  if (kind === 'mta.gapFlagged' || kind === 'mta.markedStale') return 'var(--color-warn)';
-  if (kind === 'mta.hashOverridden' || kind === 'mta.fieldCorrected')
+  if (
+    kind === 'mta.gapFlagged' ||
+    kind === 'mta.markedStale' ||
+    kind === 'cancellation.requestReceived'
+  )
+    return 'var(--color-warn)';
+  if (
+    kind === 'mta.hashOverridden' ||
+    kind === 'mta.fieldCorrected' ||
+    kind === 'cancellation.basisOverridden' ||
+    kind === 'cancellation.hashOverridden'
+  )
     return 'var(--color-accent)';
   if (
     kind === 'extraction.completed' ||
@@ -170,7 +192,10 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'mta.scheduleGenerated' ||
     kind === 'mta.hashConfirmed' ||
     kind === 'mta.committed' ||
-    kind === 'mta.scheduleSent'
+    kind === 'mta.scheduleSent' ||
+    kind === 'cancellation.committed' ||
+    kind === 'cancellation.endorsementSent' ||
+    kind === 'bordereau.entryWritten'
   )
     return 'var(--color-success)';
   return 'var(--color-ink)';
