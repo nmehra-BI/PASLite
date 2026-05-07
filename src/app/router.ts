@@ -7,7 +7,9 @@ export type Route =
   | { name: 'submission'; id: string }
   | { name: 'policy'; id: string }
   | { name: 'autonomy-admin' }
-  | { name: 'exceptions' };
+  | { name: 'exceptions' }
+  | { name: 'ledger' }
+  | { name: 'ledger-class'; classId: string };
 
 function parseHash(): Route {
   if (typeof window === 'undefined') return { name: 'listing' };
@@ -17,6 +19,9 @@ function parseHash(): Route {
   if (h === 'cockpit') return { name: 'cockpit' };
   if (h === 'settings/autonomy') return { name: 'autonomy-admin' };
   if (h === 'exceptions') return { name: 'exceptions' };
+  if (h === 'ledger') return { name: 'ledger' };
+  const ledgerCls = h.match(/^ledger\/(.+)$/);
+  if (ledgerCls) return { name: 'ledger-class', classId: ledgerCls[1]!.toUpperCase() };
   const sub = h.match(/^submission\/(.+)$/);
   if (sub) return { name: 'submission', id: sub[1]!.toUpperCase() };
   const pol = h.match(/^policy\/(.+)$/);

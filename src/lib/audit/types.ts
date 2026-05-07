@@ -966,6 +966,48 @@ export type AuditEvent = AuditEventBase &
         reason: string;
         priority: 'high' | 'medium' | 'low';
       }
+    | {
+        kind: 'autonomy.atRiskFlagged';
+        entryRef: string;
+        classId: string;
+        pattern: 'claim-within-30' | 'cancel-within-60' | 'similar-profile-referred';
+        evidence: string;
+      }
+    // Module 15 — autonomy ledger (cross-submission view + export)
+    | {
+        kind: 'ledger.viewed';
+        viewedBy: string;
+        actionCount: number;
+      }
+    | {
+        kind: 'ledger.filtered';
+        viewedBy: string;
+        filter:
+          | 'all'
+          | 'last-7-days'
+          | 'last-30-days'
+          | 'recalled'
+          | 'at-risk';
+        searchQuery: string | null;
+      }
+    | {
+        kind: 'ledger.exported';
+        exportedBy: string;
+        format: 'csv' | 'json';
+        period: { from: ISO8601; to: ISO8601 };
+        classes: string[];
+        recipient: 'capacity-provider' | 'mga-archive' | 'download';
+        actionCount: number;
+        chainHash: string;
+      }
+    | {
+        kind: 'ledger.exportSentToCapacity';
+        sentBy: string;
+        recipientEmail: string;
+        format: 'csv' | 'json';
+        chainHash: string;
+        actionCount: number;
+      }
   );
 
 export type AuditEventKind = AuditEvent['kind'];

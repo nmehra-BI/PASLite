@@ -95,3 +95,7 @@ export {
   EXCEPTION_QUEUE_SEED,
   getExceptionQueueSeed,
 } from './exceptionQueue';
+export {
+  getLedgerHistory,
+  getLedgerHistoryAsExecuted,
+} from './ledgerHistory';

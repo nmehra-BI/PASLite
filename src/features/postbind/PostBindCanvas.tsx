@@ -11,6 +11,7 @@ import {
   CancellationWorkflow,
 } from '@/features/cancellation';
 import { RenewalIntakeButton, RenewalWorkflow } from '@/features/renewal';
+import { AutonomyProvenancePanel } from '@/features/ledger';
 import { ChapterAnchor } from '@/features/lifecycle/ChapterAnchor';
 
 const TIME_FMT = new Intl.DateTimeFormat('en-GB', {
@@ -108,6 +109,7 @@ export function PostBindCanvas() {
         </button>
         <ScheduleSection />
         <SubjectivitiesPanel />
+        <AutonomyProvenancePanel />
       </ChapterAnchor>
       {/* MTA + cancellation stay anchor-only: their entry points
           (the intake buttons) must remain clickable when the chapter

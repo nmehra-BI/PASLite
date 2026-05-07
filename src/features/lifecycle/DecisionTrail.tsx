@@ -131,6 +131,12 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'autonomy.actionFired': 'Autonomous action fired',
   'autonomy.actionRecalled': 'Autonomous action recalled',
   'autonomy.exceptionFlagged': 'Exception flagged',
+  'autonomy.atRiskFlagged': 'Autonomous action flagged at-risk',
+  // Module 15 — autonomy ledger
+  'ledger.viewed': 'Autonomy ledger viewed',
+  'ledger.filtered': 'Autonomy ledger filtered',
+  'ledger.exported': 'Autonomy ledger exported',
+  'ledger.exportSentToCapacity': 'Autonomy report sent to capacity provider',
 };
 
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {

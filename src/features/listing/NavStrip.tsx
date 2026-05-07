@@ -1,4 +1,4 @@
-import { Search, Plus, Settings, Zap } from 'lucide-react';
+import { Search, Plus, Settings, Zap, BookOpen } from 'lucide-react';
 import { useListingStore } from './listingStore';
 import { useAutonomy } from '@/store/autonomy';
 import type { FilterTab } from '@/lib/listing';
@@ -90,6 +90,28 @@ export function NavStrip({ onNewSubmission }: { onNewSubmission: () => void }) {
           >
             {exceptionCount}
           </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.hash = '#/ledger';
+          }}
+          className="serif inline-flex items-center gap-1.5"
+          aria-label="Autonomy ledger"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 12.5,
+            color: 'var(--color-ink-mute)',
+            background: 'transparent',
+            padding: '4px 10px',
+            borderRadius: 'var(--radius-button)',
+            border: '0.5px solid var(--color-rule-mid)',
+            cursor: 'pointer',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          <BookOpen size={11} strokeWidth={1.5} />
+          Autonomy ledger
         </button>
         <button
           type="button"
