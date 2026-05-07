@@ -10,6 +10,7 @@ import { RatingSection } from '@/features/rating';
 import { QuoteSection } from '@/features/quote';
 import { RecommendationSection } from '@/features/recommendation';
 import { BindCeremony } from '@/features/bind';
+import { ChapterAnchor } from '@/features/lifecycle/ChapterAnchor';
 
 /**
  * The two-column composition that frames the cinematic extraction and,
@@ -79,12 +80,32 @@ export function ExtractionSequence() {
           <ExtractingHeader phase={phase} />
         ) : (
           <ExtractedView>
-            <EnrichmentSection />
-            <TriageSection />
-            <RatingSection />
-            <QuoteSection />
-            <RecommendationSection />
-            {bindPhase === 'in-progress' && <BindCeremony />}
+            <ChapterAnchor chapter="extraction">
+              {/* The ExtractedView's header renders extraction metadata;
+                  this anchor sits at its top so chapter-nav clicks
+                  scroll to the start of the extraction view. */}
+              <span style={{ display: 'block', height: 0 }} aria-hidden />
+            </ChapterAnchor>
+            <ChapterAnchor chapter="enrichment">
+              <EnrichmentSection />
+            </ChapterAnchor>
+            <ChapterAnchor chapter="triage">
+              <TriageSection />
+            </ChapterAnchor>
+            <ChapterAnchor chapter="rating">
+              <RatingSection />
+            </ChapterAnchor>
+            <ChapterAnchor chapter="quote">
+              <QuoteSection />
+            </ChapterAnchor>
+            <ChapterAnchor chapter="recommendation">
+              <RecommendationSection />
+            </ChapterAnchor>
+            {bindPhase === 'in-progress' && (
+              <ChapterAnchor chapter="bind">
+                <BindCeremony />
+              </ChapterAnchor>
+            )}
           </ExtractedView>
         )}
         <Inspector />

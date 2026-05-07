@@ -10,6 +10,7 @@ import {
   CancellationIntakeButton,
   CancellationWorkflow,
 } from '@/features/cancellation';
+import { ChapterAnchor } from '@/features/lifecycle/ChapterAnchor';
 
 const TIME_FMT = new Intl.DateTimeFormat('en-GB', {
   hour: '2-digit',
@@ -53,61 +54,66 @@ export function PostBindCanvas() {
         background: 'var(--color-bg)',
       }}
     >
-      {/* Bind summary strip — collapsed ceremony as single line. */}
-      <button
-        type="button"
-        onClick={() => setShowCertificate(true)}
-        style={{
-          margin: '14px 28px 0',
-          padding: '10px 14px',
-          borderRadius: 'var(--radius-card)',
-          background: 'var(--color-success-bg)',
-          border: '0.5px solid var(--color-success)',
-          textAlign: 'left',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          cursor: 'pointer',
-        }}
-      >
-        <Check size={14} strokeWidth={1.75} style={{ color: 'var(--color-success)' }} />
-        <span
-          className="serif"
+      <ChapterAnchor chapter="bind">
+        {/* Bind summary strip — collapsed ceremony as single line. */}
+        <button
+          type="button"
+          onClick={() => setShowCertificate(true)}
           style={{
-            fontStyle: 'italic',
-            fontSize: 13.5,
-            color: 'var(--color-success)',
-            letterSpacing: '-0.005em',
-            flex: 1,
-          }}
-        >
-          {summary}
-        </span>
-        <span
-          className="serif"
-          style={{
-            fontStyle: 'italic',
-            fontSize: 12.5,
-            color: 'var(--color-success)',
-            textDecoration: 'underline',
-            textUnderlineOffset: 3,
-            textDecorationStyle: 'dotted',
-            display: 'inline-flex',
+            margin: '14px 28px 0',
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-card)',
+            background: 'var(--color-success-bg)',
+            border: '0.5px solid var(--color-success)',
+            textAlign: 'left',
+            display: 'flex',
             alignItems: 'center',
-            gap: 4,
+            gap: 10,
+            cursor: 'pointer',
           }}
         >
-          <FileText size={11} strokeWidth={1.5} />
-          View bind certificate →
-        </span>
-      </button>
-
-      <ScheduleSection />
-      <SubjectivitiesPanel />
-      <MtaIntakeButton />
-      <MtaWorkflow />
-      <CancellationIntakeButton />
-      <CancellationWorkflow />
+          <Check size={14} strokeWidth={1.75} style={{ color: 'var(--color-success)' }} />
+          <span
+            className="serif"
+            style={{
+              fontStyle: 'italic',
+              fontSize: 13.5,
+              color: 'var(--color-success)',
+              letterSpacing: '-0.005em',
+              flex: 1,
+            }}
+          >
+            {summary}
+          </span>
+          <span
+            className="serif"
+            style={{
+              fontStyle: 'italic',
+              fontSize: 12.5,
+              color: 'var(--color-success)',
+              textDecoration: 'underline',
+              textUnderlineOffset: 3,
+              textDecorationStyle: 'dotted',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            <FileText size={11} strokeWidth={1.5} />
+            View bind certificate →
+          </span>
+        </button>
+        <ScheduleSection />
+        <SubjectivitiesPanel />
+      </ChapterAnchor>
+      <ChapterAnchor chapter="mta-04">
+        <MtaIntakeButton />
+        <MtaWorkflow />
+      </ChapterAnchor>
+      <ChapterAnchor chapter="cancellation">
+        <CancellationIntakeButton />
+        <CancellationWorkflow />
+      </ChapterAnchor>
 
       <SubjectivityInspector />
       {showCertificate && (
