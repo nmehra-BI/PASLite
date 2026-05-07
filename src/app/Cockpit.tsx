@@ -262,9 +262,17 @@ function RibbonBand() {
 function CanvasBody() {
   const phase = useIntake((s) => s.phase);
   const bindPhase = useRanBerri((s) => s.bind.phase);
+  const cursor = useRanBerri((s) => s.lifecycle.cursor);
   // Once committed, the canvas's mental model shifts from decisioning
   // to monitoring. The post-bind surface owns the rest of the lifecycle.
-  if (bindPhase === 'committed') {
+  // EXCEPT when the user has scrubbed the lifecycle ribbon back to a
+  // pre-bind milestone — in that case we re-mount the ExtractionSequence
+  // (with the cockpit's existing sepia tint signaling historical view)
+  // so the chapter anchors for triage/rating/quote/recommendation are
+  // navigable. The HistoricalScrubOverlay's status bar already tells
+  // the user they're viewing a historical state.
+  const scrubbedPreBind = cursor === 'quote' || cursor === 'quoted';
+  if (bindPhase === 'committed' && !scrubbedPreBind) {
     return <PostBindCanvas />;
   }
   if (phase === 'idle') {

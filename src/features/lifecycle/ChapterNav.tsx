@@ -4,6 +4,7 @@ import { useCanvasUI, type ChapterId } from '@/store/canvasUI';
 import { deriveChapters } from '@/lib/chapters';
 import { deriveCursorView } from '@/lib/lifecycle/cursorView';
 import type { AuditEvent } from '@/lib/audit';
+import { chapterToScrubMilestone } from './milestoneMeta';
 
 /**
  * Sticky chapter strip below the lifecycle ribbon. Italic-serif
@@ -79,22 +80,31 @@ export function ChapterNav() {
           new Date(firstAt).getTime() > historicalCutoffMs;
         const inDom = (presentChapters[c.id] ?? 0) > 0;
         const lifecycleAvailable = c.available && !postdates;
-        const clickable = lifecycleAvailable && inDom;
+        const inDomClickable = lifecycleAvailable && inDom;
         const offCanvas = lifecycleAvailable && !inDom;
+        const scrubTarget = offCanvas ? chapterToScrubMilestone(c.id) : null;
+        // Off-canvas chapters become clickable when we know which
+        // milestone to scrub to; the click scrubs the lifecycle ribbon
+        // (which swaps the canvas in CanvasBody) and then scrolls to
+        // the chapter once its anchor mounts.
+        const scrubClickable = offCanvas && scrubTarget !== null;
+        const clickable = inDomClickable || scrubClickable;
         const title = !c.available
           ? `${c.label} — not yet reached`
           : postdates
             ? `${c.label} — postdates the historical cursor`
             : offCanvas
-              ? `${c.label} — not in the current canvas`
+              ? `Click to view the policy state at ${c.label}`
               : c.label;
         const color = !clickable
           ? 'var(--color-ink-faint)'
           : isActive
             ? 'var(--color-accent)'
-            : c.status === 'complete'
-              ? 'var(--color-ink-soft)'
-              : 'var(--color-ink-mute)';
+            : offCanvas
+              ? 'var(--color-ink-mute)'
+              : c.status === 'complete'
+                ? 'var(--color-ink-soft)'
+                : 'var(--color-ink-mute)';
         return (
           <span key={c.id} style={{ display: 'inline-flex', alignItems: 'baseline' }}>
             {i > 0 && (
@@ -112,7 +122,23 @@ export function ChapterNav() {
             )}
             <button
               type="button"
-              onClick={() => scrollToChapter(c.id)}
+              onClick={() => {
+                if (inDomClickable) {
+                  scrollToChapter(c.id);
+                  return;
+                }
+                if (scrubClickable && scrubTarget) {
+                  // Scrub the lifecycle, which causes CanvasBody to
+                  // re-render with the appropriate canvas. Then scroll
+                  // once the chapter's anchor mounts. Two RAFs gives
+                  // React a render + commit cycle to mount the anchor
+                  // before we measure offsets.
+                  useRanBerri.getState().scrubLifecycle(scrubTarget);
+                  requestAnimationFrame(() => {
+                    requestAnimationFrame(() => scrollToChapter(c.id));
+                  });
+                }
+              }}
               disabled={!clickable}
               title={title}
               className="serif"
@@ -127,10 +153,7 @@ export function ChapterNav() {
                 cursor: clickable ? 'pointer' : 'default',
                 letterSpacing: '0.005em',
                 transition: 'color 200ms cubic-bezier(0.4,0,0.2,1)',
-                opacity: postdates || offCanvas ? 0.55 : 1,
-                textDecoration: offCanvas ? 'line-through' : 'none',
-                textDecorationColor: 'var(--color-rule-mid)',
-                textDecorationThickness: '0.5px',
+                opacity: postdates ? 0.55 : offCanvas ? 0.78 : 1,
               }}
             >
               {c.label}

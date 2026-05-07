@@ -115,3 +115,32 @@ export function viewingState(
 }
 
 export const MILESTONE_ORDER_CONST = MILESTONE_ORDER;
+
+/** When the user clicks an off-canvas chapter (anchor not in DOM),
+ *  scrub the lifecycle to a milestone that brings the chapter's
+ *  canvas into view. Pre-bind chapters all map to 'quote' so the
+ *  ExtractionSequence canvas mounts; post-bind chapters map to
+ *  their own milestone so the PostBindCanvas mounts. */
+export function chapterToScrubMilestone(
+  chapter: string,
+): LifecycleMilestone | null {
+  switch (chapter) {
+    case 'extraction':
+    case 'enrichment':
+    case 'triage':
+    case 'rating':
+    case 'quote':
+    case 'recommendation':
+      return 'quote';
+    case 'bind':
+      return 'bind';
+    case 'mta-04':
+      return 'mta-04';
+    case 'cancellation':
+      return 'cancel';
+    case 'renewal':
+      return 'renewal';
+    default:
+      return null;
+  }
+}
