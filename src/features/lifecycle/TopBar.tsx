@@ -3,6 +3,7 @@ import { useRanBerri } from '@/store';
 import { useConfig } from '@/config';
 import { Pill } from '@/components';
 import { AuditLogTrigger } from '@/features/audit';
+import { SyncStatus } from './SyncStatus';
 
 /**
  * The workstation top bar. Thin, dense, no marketing copy. Reads
@@ -103,6 +104,7 @@ export function TopBar() {
       </div>
 
       <div className="flex items-center gap-3">
+        <SyncStatus />
         <AuditLogTrigger />
         <Pill tone="warn" mono>
           STAGING

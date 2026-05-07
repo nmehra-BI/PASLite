@@ -12,6 +12,7 @@ import type {
 // through @/lib/bind/runBindCeremony, which imports the store back.
 import { deriveBoundLedgerEntry } from '@/lib/bind/deriveBoundLedgerEntry';
 import { getActiveConfig } from '@/config';
+import { enqueue as enqueueSyncEvent } from '@/lib/sync';
 import type { UnderwriterCorrected } from '@/lib/field';
 import {
   ALL_ARTIFACTS,
@@ -138,6 +139,10 @@ export type RanBerriState = {
 
   // Actions
   appendAuditEvent: (event: NewAuditEvent) => void;
+  /** Merge events fetched from paslite-server into the audit log
+   *  and re-apply them to the materialised state. Idempotent on
+   *  event.id — events already present are skipped. */
+  applyServerEvents: (events: AuditEvent[]) => void;
 
   /**
    * Underwriter-driven correction. Reads the Field<T> at `path`,
@@ -353,6 +358,25 @@ export const useRanBerri = create<RanBerriState>()(
           // Keep materialised state consistent with the log via a
           // single-event replay applied on top of current state.
           applySingleEvent(s, full);
+          // Notify the sync orchestrator (no-op when disabled). Done
+          // INSIDE the set callback intentionally — the orchestrator
+          // queues asynchronously so the local write completes first.
+          enqueueSyncEvent(full);
+        }),
+
+      applyServerEvents: (events) =>
+        set((s) => {
+          const seen = new Set(s.auditLog.map((e) => e.id));
+          let appliedAny = false;
+          for (const e of events) {
+            if (seen.has(e.id)) continue;
+            s.auditLog.push(e);
+            applySingleEvent(s, e);
+            appliedAny = true;
+          }
+          // No sync re-enqueue here — these events came from the
+          // server, so re-posting them would echo back as duplicates.
+          void appliedAny;
         }),
 
       applyCorrection: (path, correction) => {
