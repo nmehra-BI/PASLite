@@ -56,6 +56,11 @@ import type {
   CancellationHashRecord,
   CancellationReplay,
 } from '@/lib/cancellation/types';
+import { freshRenewal } from '@/lib/renewal/types';
+import type {
+  RenewalHashRecord,
+  RenewalReplay,
+} from '@/lib/renewal/types';
 import type { HashId } from '@/lib/bind/types';
 
 /**
@@ -115,6 +120,8 @@ export type RanBerriState = {
   policy: PolicyReplay;
   /** Active or terminal cancellation workflow (module 10). */
   cancellation: CancellationReplay;
+  /** Active or committed renewal workflow (module 11). */
+  renewal: RenewalReplay;
   lifecycle: {
     cursor: LifecycleMilestone;
     now: LifecycleMilestone;
@@ -328,6 +335,7 @@ export const useRanBerri = create<RanBerriState>()(
       mta: freshMta(),
       policy: freshPolicy(),
       cancellation: freshCancellation(),
+      renewal: freshRenewal(),
       lifecycle: { cursor: 'quote', now: 'quote' },
       ui: {
         canvasMode: 'compact',
@@ -833,6 +841,7 @@ export const useRanBerri = create<RanBerriState>()(
           s.mta = freshMta();
           s.policy = freshPolicy();
           s.cancellation = freshCancellation();
+          s.renewal = freshRenewal();
           // Preserve boundLedger across reset — the moat compounds.
           // Use deepReset to wipe it.
           s.lifecycle = { cursor: 'quote', now: 'quote' };
@@ -878,6 +887,7 @@ export const useRanBerri = create<RanBerriState>()(
           merged.mta = result.mta;
           merged.policy = result.policy;
           merged.cancellation = result.cancellation;
+          merged.renewal = result.renewal;
           // Merge the persisted ledger with whatever this log replayed
           // — both contribute, and we de-duplicate on policyRef so
           // re-loading an already-recorded bind doesn't double-count.
@@ -1738,6 +1748,158 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
 
     case 'competitor.switchRecorded':
       // Surfaced by recommendation engine; no state change.
+      break;
+
+    // ---------- renewal (module 11) ----------
+    case 'claim.recorded':
+    case 'subjectivity.satisfied':
+      // Recorded for audit; year-1 review projects from these.
+      break;
+
+    case 'renewal.triggered':
+      s.renewal.phase = 'triggered';
+      s.renewal.triggeredAt = e.at;
+      s.renewal.renewalId = e.renewalId;
+      s.renewal.priorPolicyRef = e.priorPolicyRef;
+      if (
+        s.submissionState === 'bound' ||
+        s.submissionState === 'in-force-with-mta'
+      ) {
+        s.submissionState = 'renewal-pending';
+      }
+      break;
+
+    case 'renewal.year1ReviewBuilt':
+      s.renewal.phase = 'year1-review';
+      s.renewal.year1Review = {
+        earnedPremium: e.earnedPremium,
+        totalLosses: e.totalLosses,
+        lossRatio: e.lossRatio,
+        claimCount: e.claimCount,
+        claims: [],
+        mtaCount: e.mtaCount,
+        mtaRefs: [],
+        subjectivitiesSatisfied: e.subjectivitiesSatisfied,
+        subjectivitiesTotal: e.subjectivitiesSatisfied,
+        brokerRelationship: {
+          name: 'Sarah Whitfield (SureStep)',
+          sentiment: 'strong',
+          note: 'High broker engagement throughout year-1.',
+        },
+        marginalia: 'Year-1 ran clean.',
+      };
+      break;
+
+    case 'renewal.insuredChangesCaptured':
+      s.renewal.phase = 'changes-captured';
+      s.renewal.insuredChanges = {
+        newTurnover: e.newTurnover,
+        materialAdditions: e.materialAdditions,
+        brokerTargetPremium: e.brokerTargetPremium,
+        competitivePressure: e.competitivePressure,
+        notes: e.notes,
+      };
+      break;
+
+    case 'renewal.year2Rated':
+      s.renewal.phase = 'year2-rated';
+      s.renewal.year2 = {
+        technicalPremium: e.technicalPremium,
+        sha: e.sha,
+        deltaFromYear1Annual: e.deltaFromYear1Annual,
+      };
+      break;
+
+    case 'renewal.defencePricingComputed':
+      s.renewal.phase = 'defence-priced';
+      s.renewal.defencePricing = {
+        options: e.options,
+        holdFloor: e.holdFloor,
+      };
+      break;
+
+    case 'renewal.optionSelected':
+      s.renewal.phase = 'option-selected';
+      s.renewal.selectedOption = {
+        id: e.optionId,
+        premium: e.premium,
+        selectedBy: e.selectedBy,
+        selectedAt: e.at,
+      };
+      break;
+
+    case 'renewal.recommendationCompleted':
+      s.renewal.phase = 'recommendation-ready';
+      s.renewal.recommendation = {
+        primary: e.primary,
+        confidence: e.confidence,
+        headline: e.headline,
+        factorIds: e.factorIds,
+      };
+      break;
+
+    case 'renewal.slipGenerated':
+      s.renewal.phase = 'slip-ready';
+      s.renewal.slip = {
+        slipRef: e.slipRef,
+        premium: e.premium,
+        sha: e.sha,
+        sentAt: null,
+      };
+      break;
+
+    case 'renewal.slipSent':
+      s.renewal.slip.sentAt = e.at;
+      break;
+
+    case 'renewal.hashConfirmed': {
+      const idx = s.renewal.hashes.findIndex((h) => h.id === e.hashId);
+      const next: RenewalHashRecord = {
+        id: e.hashId,
+        status: 'confirmed',
+        artefactSha: e.artefactSha,
+        confirmedAt: e.at,
+        confirmedBy: e.confirmedBy,
+      };
+      if (idx >= 0) s.renewal.hashes[idx] = next;
+      else s.renewal.hashes.push(next);
+      s.renewal.phase = 'ceremony-in-progress';
+      break;
+    }
+
+    case 'renewal.committed':
+      s.renewal.phase = 'committed';
+      s.renewal.committedAt = e.at;
+      s.renewal.signedBy = e.signedBy;
+      s.renewal.successorPolicyRef = e.successorPolicyRef;
+      s.renewal.inceptionDate = e.inceptionDate;
+      s.renewal.expiryDate = e.expiryDate;
+      s.submissionState = 'renewed';
+      // Renewal becomes the live 'now' milestone; the lifecycle
+      // ribbon's third seam (succession) fills.
+      s.lifecycle.now = 'renewal';
+      s.lifecycle.cursor = 'renewal';
+      // Augment the boundLedger with the successor policy so the
+      // data flywheel sees the renewal binder.
+      if (
+        s.submission &&
+        !s.boundLedger.some((b) => b.id === e.successorPolicyRef)
+      ) {
+        s.boundLedger.push(
+          deriveBoundLedgerEntry({
+            submission: s.submission,
+            policyRef: e.successorPolicyRef,
+            premium: e.premium,
+            signedBy: e.signedBy,
+            signedAt: e.at,
+          }),
+        );
+      }
+      break;
+
+    case 'renewal.scheduleSent':
+      s.renewal.scheduleSentAt = e.at;
+      s.renewal.phase = 'sent';
       break;
 
     case 'slip.fieldEdited':

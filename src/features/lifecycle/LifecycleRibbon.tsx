@@ -40,6 +40,7 @@ const PHASES: PhaseSpec[] = [
 const SEAMS: SeamSpec[] = [
   { label: 'submission becomes policy', at: 0.18 },
   { label: 'policy terminates', at: 0.82 },
+  { label: 'policy succeeds (renewal)', at: 0.94 },
 ];
 
 type Props = {
@@ -76,11 +77,16 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
   const isBound = bindPhase === 'committed';
   const cancellation = useRanBerri((s) => s.cancellation);
   const isCancelled = cancellation.phase === 'committed' || cancellation.phase === 'sent';
+  const renewal = useRanBerri((s) => s.renewal);
+  const isRenewed = renewal.phase === 'committed' || renewal.phase === 'sent';
   // Hide Renewal once the policy is cancelled — there is no renewal
-  // to forecast on a terminated policy.
-  const visibleMilestones = MILESTONES.filter((m) =>
-    isCancelled ? m.key !== 'renewal' : true,
-  );
+  // to forecast on a terminated policy. Hide Cancel once renewal has
+  // succeeded — the year-1 policy never cancelled, it succeeded.
+  const visibleMilestones = MILESTONES.filter((m) => {
+    if (isCancelled && m.key === 'renewal') return false;
+    if (isRenewed && m.key === 'cancel') return false;
+    return true;
+  });
 
   // MTA mini-markers between Bind (0.26) and MTA-04 (0.5). Each
   // committed endorsement gets a small filled coral dot at a fraction
@@ -199,9 +205,11 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
         {SEAMS.map((seam, i) => {
           const isBecomePolicySeam = i === 0;
           const isPolicyTerminatesSeam = i === 1;
+          const isSuccessionSeam = i === 2;
           const isFilled =
             (isBecomePolicySeam && isBound) ||
-            (isPolicyTerminatesSeam && isCancelled);
+            (isPolicyTerminatesSeam && isCancelled) ||
+            (isSuccessionSeam && isRenewed);
           return (
             <div
               key={`${seam.label}-line`}

@@ -103,6 +103,21 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'cancellation.endorsementSent': 'Cancellation endorsement sent',
   'bordereau.entryWritten': 'Bordereau entry written',
   'competitor.switchRecorded': 'Competitor switch recorded',
+  // Module 11 — renewal
+  'claim.recorded': 'Claim recorded',
+  'subjectivity.satisfied': 'Subjectivity satisfied',
+  'renewal.triggered': 'Renewal triggered',
+  'renewal.year1ReviewBuilt': 'Year-1 review built',
+  'renewal.insuredChangesCaptured': 'Year-2 changes captured',
+  'renewal.year2Rated': 'Year-2 rated',
+  'renewal.defencePricingComputed': 'Defence pricing computed',
+  'renewal.optionSelected': 'Defence option selected',
+  'renewal.recommendationCompleted': 'Renewal recommendation completed',
+  'renewal.slipGenerated': 'Renewal slip generated',
+  'renewal.slipSent': 'Renewal slip sent',
+  'renewal.hashConfirmed': 'Renewal hash confirmed',
+  'renewal.committed': 'Renewal committed',
+  'renewal.scheduleSent': 'Renewal schedule sent',
 };
 
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {
@@ -195,7 +210,15 @@ function dotTone(kind: AuditEvent['kind']): string {
     kind === 'mta.scheduleSent' ||
     kind === 'cancellation.committed' ||
     kind === 'cancellation.endorsementSent' ||
-    kind === 'bordereau.entryWritten'
+    kind === 'bordereau.entryWritten' ||
+    kind === 'renewal.year1ReviewBuilt' ||
+    kind === 'renewal.year2Rated' ||
+    kind === 'renewal.recommendationCompleted' ||
+    kind === 'renewal.slipGenerated' ||
+    kind === 'renewal.slipSent' ||
+    kind === 'renewal.hashConfirmed' ||
+    kind === 'renewal.committed' ||
+    kind === 'renewal.scheduleSent'
   )
     return 'var(--color-success)';
   return 'var(--color-ink)';

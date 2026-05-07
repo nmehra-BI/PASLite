@@ -8,7 +8,8 @@ export type AuditFilterKey =
   | 'hashes'
   | 'bind'
   | 'mta'
-  | 'cancellation';
+  | 'cancellation'
+  | 'renewal';
 
 const FILTER_LABELS: Array<{ key: AuditFilterKey; label: string }> = [
   { key: 'all', label: 'all events' },
@@ -19,6 +20,7 @@ const FILTER_LABELS: Array<{ key: AuditFilterKey; label: string }> = [
   { key: 'bind', label: 'bind events' },
   { key: 'mta', label: 'mta events' },
   { key: 'cancellation', label: 'cancellation' },
+  { key: 'renewal', label: 'renewal' },
 ];
 
 export function eventMatchesFilter(
@@ -61,6 +63,13 @@ export function eventMatchesFilter(
       kind.startsWith('cancellation.') ||
       kind === 'bordereau.entryWritten' ||
       kind === 'competitor.switchRecorded'
+    );
+  }
+  if (filter === 'renewal') {
+    return (
+      kind.startsWith('renewal.') ||
+      kind === 'claim.recorded' ||
+      kind === 'subjectivity.satisfied'
     );
   }
   return false;

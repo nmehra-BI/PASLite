@@ -740,6 +740,136 @@ export type AuditEvent = AuditEventBase &
         switchType: 'mid-term-switch';
         notes: string;
       }
+
+    // Renewal (module 11)
+    | {
+        kind: 'claim.recorded';
+        submissionId: string;
+        policyRef: string;
+        claimRef: string;
+        siteName: string;
+        date: ISO8601;
+        category: string;
+        paid: number;
+        reserved: number;
+        status: 'open' | 'paid' | 'closed';
+        notes: string;
+      }
+    | {
+        kind: 'subjectivity.satisfied';
+        submissionId: string;
+        subjectivityId: string;
+        evidenceRef: string;
+        satisfiedBy: string;
+      }
+    | {
+        kind: 'renewal.triggered';
+        submissionId: string;
+        renewalId: string;
+        priorPolicyRef: string;
+        daysToExpiry: number;
+        targetInception: ISO8601;
+      }
+    | {
+        kind: 'renewal.year1ReviewBuilt';
+        submissionId: string;
+        renewalId: string;
+        earnedPremium: number;
+        totalLosses: number;
+        lossRatio: number;
+        claimCount: number;
+        mtaCount: number;
+        subjectivitiesSatisfied: number;
+      }
+    | {
+        kind: 'renewal.insuredChangesCaptured';
+        submissionId: string;
+        renewalId: string;
+        newTurnover: number;
+        materialAdditions: string[];
+        brokerTargetPremium: number | null;
+        competitivePressure: string | null;
+        notes: string;
+      }
+    | {
+        kind: 'renewal.year2Rated';
+        submissionId: string;
+        renewalId: string;
+        technicalPremium: number;
+        sha: string;
+        deltaFromYear1Annual: number;
+      }
+    | {
+        kind: 'renewal.defencePricingComputed';
+        submissionId: string;
+        renewalId: string;
+        options: Array<{
+          id: 'hold' | 'defend' | 'aggressive';
+          premium: number;
+          rationale: string;
+          recommended: boolean;
+        }>;
+        holdFloor: number;
+      }
+    | {
+        kind: 'renewal.optionSelected';
+        submissionId: string;
+        renewalId: string;
+        optionId: 'hold' | 'defend' | 'aggressive';
+        premium: number;
+        selectedBy: string;
+      }
+    | {
+        kind: 'renewal.recommendationCompleted';
+        submissionId: string;
+        renewalId: string;
+        primary: 'bind' | 'refer' | 'ntu';
+        confidence: 'high' | 'moderate' | 'low';
+        headline: string;
+        factorIds: string[];
+      }
+    | {
+        kind: 'renewal.slipGenerated';
+        submissionId: string;
+        renewalId: string;
+        slipRef: string;
+        premium: number;
+        sha: string;
+      }
+    | {
+        kind: 'renewal.slipSent';
+        submissionId: string;
+        renewalId: string;
+        slipRef: string;
+        recipient: string;
+      }
+    | {
+        kind: 'renewal.hashConfirmed';
+        submissionId: string;
+        renewalId: string;
+        hashId: 'premium' | 'subjectivities' | 'sanctions' | 'capacity';
+        artefactSha: string;
+        confirmedBy: string;
+      }
+    | {
+        kind: 'renewal.committed';
+        submissionId: string;
+        renewalId: string;
+        priorPolicyRef: string;
+        successorPolicyRef: string;
+        premium: number;
+        inceptionDate: ISO8601;
+        expiryDate: ISO8601;
+        signedBy: string;
+      }
+    | {
+        kind: 'renewal.scheduleSent';
+        submissionId: string;
+        renewalId: string;
+        successorPolicyRef: string;
+        recipient: string;
+        sentBy: string;
+      }
   );
 
 export type AuditEventKind = AuditEvent['kind'];

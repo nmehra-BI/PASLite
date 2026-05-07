@@ -318,6 +318,13 @@ import type {
 import { freshCancellation } from '@/lib/cancellation/types';
 export { freshCancellation } from '@/lib/cancellation/types';
 export type { CancellationReplay } from '@/lib/cancellation/types';
+import type {
+  RenewalHashRecord,
+  RenewalReplay,
+} from '@/lib/renewal/types';
+import { freshRenewal } from '@/lib/renewal/types';
+export { freshRenewal } from '@/lib/renewal/types';
+export type { RenewalReplay } from '@/lib/renewal/types';
 
 export type BindReplay = {
   phase: BindCeremonyPhase;
@@ -402,7 +409,9 @@ export type SubmissionLifecycleState =
   | 'mta-pending'
   | 'in-force-with-mta'
   | 'cancel-pending'
-  | 'cancelled';
+  | 'cancelled'
+  | 'renewal-pending'
+  | 'renewed';
 
 export type ReferralRecord = {
   reviewer: string;
@@ -448,6 +457,8 @@ export type ReplayResult = {
   policy: PolicyReplay;
   /** Active or terminal cancellation workflow (module 10). */
   cancellation: CancellationReplay;
+  /** Active or committed renewal workflow (module 11). */
+  renewal: RenewalReplay;
 };
 
 export function freshArtifacts(): Record<ArtifactKey, ArtifactState> {
@@ -509,6 +520,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
   const mta = freshMta();
   const policy = freshPolicy();
   const cancellation = freshCancellation();
+  const renewal = freshRenewal();
 
   for (const e of events) {
     switch (e.kind) {
@@ -1464,6 +1476,139 @@ export function replay(events: AuditEvent[]): ReplayResult {
         // materialised cancellation slice. No state change here.
         break;
 
+      // ---------- Renewal (module 11) ----------
+      case 'claim.recorded':
+      case 'subjectivity.satisfied':
+        // Recorded for the audit story; the materialised state is
+        // derived by the year-1 review projection.
+        break;
+
+      case 'renewal.triggered':
+        renewal.phase = 'triggered';
+        renewal.triggeredAt = e.at;
+        renewal.renewalId = e.renewalId;
+        renewal.priorPolicyRef = e.priorPolicyRef;
+        if (
+          submissionState === 'bound' ||
+          submissionState === 'in-force-with-mta'
+        ) {
+          submissionState = 'renewal-pending';
+        }
+        break;
+
+      case 'renewal.year1ReviewBuilt':
+        renewal.phase = 'year1-review';
+        renewal.year1Review = {
+          earnedPremium: e.earnedPremium,
+          totalLosses: e.totalLosses,
+          lossRatio: e.lossRatio,
+          claimCount: e.claimCount,
+          claims: [],
+          mtaCount: e.mtaCount,
+          mtaRefs: [],
+          subjectivitiesSatisfied: e.subjectivitiesSatisfied,
+          subjectivitiesTotal: e.subjectivitiesSatisfied,
+          brokerRelationship: {
+            name: 'Sarah Whitfield (SureStep)',
+            sentiment: 'strong',
+            note: 'High broker engagement throughout year-1.',
+          },
+          marginalia: 'Year-1 ran clean.',
+        };
+        break;
+
+      case 'renewal.insuredChangesCaptured':
+        renewal.phase = 'changes-captured';
+        renewal.insuredChanges = {
+          newTurnover: e.newTurnover,
+          materialAdditions: e.materialAdditions,
+          brokerTargetPremium: e.brokerTargetPremium,
+          competitivePressure: e.competitivePressure,
+          notes: e.notes,
+        };
+        break;
+
+      case 'renewal.year2Rated':
+        renewal.phase = 'year2-rated';
+        renewal.year2 = {
+          technicalPremium: e.technicalPremium,
+          sha: e.sha,
+          deltaFromYear1Annual: e.deltaFromYear1Annual,
+        };
+        break;
+
+      case 'renewal.defencePricingComputed':
+        renewal.phase = 'defence-priced';
+        renewal.defencePricing = {
+          options: e.options,
+          holdFloor: e.holdFloor,
+        };
+        break;
+
+      case 'renewal.optionSelected':
+        renewal.phase = 'option-selected';
+        renewal.selectedOption = {
+          id: e.optionId,
+          premium: e.premium,
+          selectedBy: e.selectedBy,
+          selectedAt: e.at,
+        };
+        break;
+
+      case 'renewal.recommendationCompleted':
+        renewal.phase = 'recommendation-ready';
+        renewal.recommendation = {
+          primary: e.primary,
+          confidence: e.confidence,
+          headline: e.headline,
+          factorIds: e.factorIds,
+        };
+        break;
+
+      case 'renewal.slipGenerated':
+        renewal.phase = 'slip-ready';
+        renewal.slip = {
+          slipRef: e.slipRef,
+          premium: e.premium,
+          sha: e.sha,
+          sentAt: null,
+        };
+        break;
+
+      case 'renewal.slipSent':
+        renewal.slip.sentAt = e.at;
+        break;
+
+      case 'renewal.hashConfirmed': {
+        const idx = renewal.hashes.findIndex((h) => h.id === e.hashId);
+        const next: RenewalHashRecord = {
+          id: e.hashId,
+          status: 'confirmed',
+          artefactSha: e.artefactSha,
+          confirmedAt: e.at,
+          confirmedBy: e.confirmedBy,
+        };
+        if (idx >= 0) renewal.hashes[idx] = next;
+        else renewal.hashes.push(next);
+        renewal.phase = 'ceremony-in-progress';
+        break;
+      }
+
+      case 'renewal.committed':
+        renewal.phase = 'committed';
+        renewal.committedAt = e.at;
+        renewal.signedBy = e.signedBy;
+        renewal.successorPolicyRef = e.successorPolicyRef;
+        renewal.inceptionDate = e.inceptionDate;
+        renewal.expiryDate = e.expiryDate;
+        submissionState = 'renewed';
+        break;
+
+      case 'renewal.scheduleSent':
+        renewal.scheduleSentAt = e.at;
+        renewal.phase = 'sent';
+        break;
+
       // Pass-through:
       case 'submission.received':
       case 'gap.flagged':
@@ -1494,6 +1639,7 @@ export function replay(events: AuditEvent[]): ReplayResult {
     mta,
     policy,
     cancellation,
+    renewal,
   };
 }
 

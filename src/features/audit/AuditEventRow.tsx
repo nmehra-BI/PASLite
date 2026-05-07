@@ -80,6 +80,20 @@ const KIND_TITLE: Partial<Record<AuditEvent['kind'], string>> = {
   'cancellation.endorsementSent': 'cancellation.endorsementSent',
   'bordereau.entryWritten': 'bordereau.entryWritten',
   'competitor.switchRecorded': 'competitor.switchRecorded',
+  'claim.recorded': 'claim.recorded',
+  'subjectivity.satisfied': 'subjectivity.satisfied',
+  'renewal.triggered': 'renewal.triggered',
+  'renewal.year1ReviewBuilt': 'renewal.year1ReviewBuilt',
+  'renewal.insuredChangesCaptured': 'renewal.insuredChangesCaptured',
+  'renewal.year2Rated': 'renewal.year2Rated',
+  'renewal.defencePricingComputed': 'renewal.defencePricingComputed',
+  'renewal.optionSelected': 'renewal.optionSelected',
+  'renewal.recommendationCompleted': 'renewal.recommendationCompleted',
+  'renewal.slipGenerated': 'renewal.slipGenerated',
+  'renewal.slipSent': 'renewal.slipSent',
+  'renewal.hashConfirmed': 'renewal.hashConfirmed',
+  'renewal.committed': 'renewal.committed',
+  'renewal.scheduleSent': 'renewal.scheduleSent',
 };
 
 function summarise(e: AuditEvent): string {
