@@ -94,6 +94,10 @@ const KIND_TITLE: Partial<Record<AuditEvent['kind'], string>> = {
   'renewal.hashConfirmed': 'renewal.hashConfirmed',
   'renewal.committed': 'renewal.committed',
   'renewal.scheduleSent': 'renewal.scheduleSent',
+  'listing.viewed': 'listing.viewed',
+  'listing.actionTaken': 'listing.actionTaken',
+  'listing.searchPerformed': 'listing.searchPerformed',
+  'chase.sent': 'chase.sent',
 };
 
 function summarise(e: AuditEvent): string {

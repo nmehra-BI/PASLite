@@ -1,4 +1,4 @@
-import { Sparkle } from 'lucide-react';
+import { ArrowLeft, Sparkle } from 'lucide-react';
 import { useRanBerri } from '@/store';
 import { Pill } from '@/components';
 import { AuditLogTrigger } from '@/features/audit';
@@ -23,6 +23,36 @@ export function TopBar() {
       }}
     >
       <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            window.location.hash = '#/';
+          }}
+          className="serif inline-flex items-center gap-1"
+          aria-label="All submissions"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 12.5,
+            color: 'var(--color-ink-mute)',
+            background: 'transparent',
+            border: 0,
+            padding: '4px 8px',
+            cursor: 'pointer',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          <ArrowLeft size={11} strokeWidth={1.5} />
+          All submissions
+        </button>
+        <span
+          aria-hidden
+          style={{
+            display: 'inline-block',
+            width: 0.5,
+            height: 14,
+            background: 'var(--color-rule-mid)',
+          }}
+        />
         <div className="flex items-center gap-2">
           <Sparkle
             size={13}

@@ -118,6 +118,11 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'renewal.hashConfirmed': 'Renewal hash confirmed',
   'renewal.committed': 'Renewal committed',
   'renewal.scheduleSent': 'Renewal schedule sent',
+  // Module 12 — listing / workspace
+  'listing.viewed': 'Listing viewed',
+  'listing.actionTaken': 'Listing action taken',
+  'listing.searchPerformed': 'Listing search performed',
+  'chase.sent': 'Chase email sent',
 };
 
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {

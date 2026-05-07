@@ -870,6 +870,33 @@ export type AuditEvent = AuditEventBase &
         recipient: string;
         sentBy: string;
       }
+
+    // Listing / workspace (module 12)
+    | {
+        kind: 'listing.viewed';
+        viewedBy: string;
+        entryCount: number;
+      }
+    | {
+        kind: 'listing.actionTaken';
+        viewedBy: string;
+        entryRef: string;
+        actionId: string;
+      }
+    | {
+        kind: 'listing.searchPerformed';
+        viewedBy: string;
+        query: string;
+        resultCount: number;
+      }
+    | {
+        kind: 'chase.sent';
+        entryRef: string;
+        recipient: string;
+        subject: string;
+        body: string;
+        sentBy: string;
+      }
   );
 
 export type AuditEventKind = AuditEvent['kind'];
