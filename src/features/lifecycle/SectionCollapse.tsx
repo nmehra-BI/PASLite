@@ -49,6 +49,7 @@ export function SectionCollapse({
           background: 'var(--color-bg)',
           opacity: 0.5,
           filter: 'grayscale(0.4)',
+          scrollMarginTop: 24,
         }}
         aria-disabled="true"
       >
@@ -74,6 +75,7 @@ export function SectionCollapse({
         borderTop: '0.5px solid var(--color-rule)',
         borderLeft: isCurrent ? '1.5px solid var(--color-accent)' : '0',
         background: 'var(--color-bg)',
+        scrollMarginTop: 24,
       }}
     >
       <SummaryRow chapter={chapter} status={status} expandable expanded={expanded} onClick={toggle}>

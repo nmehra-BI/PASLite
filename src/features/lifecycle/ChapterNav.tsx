@@ -127,11 +127,44 @@ export function ChapterNav() {
   );
 }
 
+/**
+ * Scroll to a chapter section. The cockpit's canvas (extraction or
+ * post-bind) is rendered inside a scrollable div several levels deep
+ * — `scrollIntoView` is unreliable here because it walks up multiple
+ * non-scrolling flex containers and can land in the wrong viewport.
+ * Instead, find the nearest scrollable ancestor explicitly and scroll
+ * IT to the section's offset, with a margin to clear the sticky nav.
+ */
 export function scrollToChapter(chapter: ChapterId) {
   if (typeof document === 'undefined') return;
-  const el = document.querySelector(`[data-chapter="${chapter}"]`);
+  const el = document.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`);
   if (!el) return;
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const container = nearestScrollable(el);
+  const margin = 24;
+  if (!container) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  const top =
+    el.getBoundingClientRect().top -
+    container.getBoundingClientRect().top +
+    container.scrollTop -
+    margin;
+  container.scrollTo({ top, behavior: 'smooth' });
+}
+
+function nearestScrollable(start: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = start.parentElement;
+  while (node && node !== document.body) {
+    const style = window.getComputedStyle(node);
+    const overflowY = style.overflowY;
+    const canScroll =
+      (overflowY === 'auto' || overflowY === 'scroll') &&
+      node.scrollHeight > node.clientHeight;
+    if (canScroll) return node;
+    node = node.parentElement;
+  }
+  return null;
 }
 
 /**
