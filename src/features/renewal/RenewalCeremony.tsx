@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { useRanBerri } from '@/store';
+import { getActiveConfig } from '@/config';
 import {
   commitRenewal,
   confirmRenewalHash,
@@ -10,6 +11,9 @@ import {
 import type { RenewalHashRecord } from '@/lib/renewal';
 
 type HashId = RenewalHashRecord['id'];
+
+const renewalCfg = getActiveConfig();
+const renewalCapacityLabel = `${renewalCfg.metadata.capacityProvider.name} · ${(renewalCfg.capacity.capacityProviderAllocation * 100).toFixed(0)}% line maintained for year 2`;
 
 const HASHES: Array<{
   id: HashId;
@@ -47,7 +51,7 @@ const HASHES: Array<{
     id: 'capacity',
     index: 4,
     title: 'Capacity',
-    primary: () => 'Syndicate 2358 · 65% line maintained for year 2',
+    primary: () => renewalCapacityLabel,
     citation: () => 'within syndicate headroom',
   },
 ];

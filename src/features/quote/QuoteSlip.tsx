@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Sparkle } from 'lucide-react';
 import { useRanBerri } from '@/store';
+import { useConfig } from '@/config';
 import { effectiveValue, type Field } from '@/lib/field';
 import type { Site } from '@/lib/fixtures';
 import { EditableField } from './EditableField';
@@ -39,6 +40,10 @@ export function QuoteSlip() {
   const quote = useRanBerri((s) => s.quote);
   const ratingArtifact = useRanBerri((s) => s.artifacts.rating);
   const isRatingStale = ratingArtifact.staleSince !== null;
+  const config = useConfig();
+  const capacityProviderName = config.metadata.capacityProvider.name;
+  const capacityLineLabel = `${(config.capacity.capacityProviderAllocation * 100).toFixed(0)}% line`;
+  const underwriterName = config.metadata.underwriterName;
 
   const insuredName = readField(submission?.insured.legalName, null) ?? '—';
   const chn = readField(submission?.insured.companiesHouseNumber, null) ?? '—';
@@ -271,7 +276,7 @@ export function QuoteSlip() {
       </Section>
 
       <Section label="capacity">
-        <div>Syndicate 2358 · 65% line</div>
+        <div>{capacityProviderName} · {capacityLineLabel}</div>
       </Section>
 
       <Divider />
@@ -309,7 +314,7 @@ export function QuoteSlip() {
           }}
         >
           <div style={{ color: 'var(--color-ink)', fontStyle: 'normal' }}>
-            <EditableField fieldKey="signatureName" defaultValue="N. Sharma" />
+            <EditableField fieldKey="signatureName" defaultValue={underwriterName} />
           </div>
           <div>Senior underwriter</div>
           <div>MGA UK W&amp;R desk</div>

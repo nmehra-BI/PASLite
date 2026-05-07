@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
 import { Sparkle } from 'lucide-react';
 import { useRanBerri } from '@/store';
+import { useConfig } from '@/config';
 import { getManchesterMtaRequest } from '@/lib/fixtures';
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
@@ -18,6 +19,7 @@ export function MtaScheduleSection() {
   const submission = useRanBerri((s) => s.submission);
   const mta = useRanBerri((s) => s.mta);
   const bind = useRanBerri((s) => s.bind);
+  const config = useConfig();
 
   if (!submission || !mta.request || !mta.schedule || !mta.delta) return null;
   if (
@@ -267,9 +269,9 @@ export function MtaScheduleSection() {
               lineHeight: 1.55,
             }}
           >
-            <div style={{ color: 'var(--color-ink)', fontStyle: 'normal' }}>N. Sharma</div>
-            <div>Senior underwriter</div>
-            <div>MGA UK W&amp;R desk</div>
+            <div style={{ color: 'var(--color-ink)', fontStyle: 'normal' }}>{config.metadata.underwriterName}</div>
+            <div>{config.metadata.underwriterTitle}</div>
+            <div>{config.metadata.mgaDeskName}</div>
           </div>
         </div>
       </article>

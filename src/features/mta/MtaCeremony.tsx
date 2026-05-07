@@ -2,8 +2,13 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check } from 'lucide-react';
 import { useRanBerri } from '@/store';
+import { getActiveConfig } from '@/config';
 import { commitMta, confirmMtaHash } from '@/lib/mta';
 import type { MtaHashId } from '@/lib/mta';
+
+const config = getActiveConfig();
+const capacityProviderName = config.metadata.capacityProvider.name;
+const capacityLineLabel = `${(config.capacity.capacityProviderAllocation * 100).toFixed(0)}% line`;
 
 const HASHES: Array<{
   id: MtaHashId;
@@ -31,8 +36,8 @@ const HASHES: Array<{
     title: 'Capacity update',
     primaryFor: (s) =>
       s.capacity
-        ? `Syndicate 2358 · 65% line maintained · £${s.capacity.newTotalConsumption.toLocaleString('en-GB')} total`
-        : 'Syndicate 2358 · 65% line maintained',
+        ? `${capacityProviderName} · ${capacityLineLabel} maintained · £${s.capacity.newTotalConsumption.toLocaleString('en-GB')} total`
+        : `${capacityProviderName} · ${capacityLineLabel} maintained`,
     citationFor: (s) =>
       s.capacity
         ? `delta consumption £${s.capacity.deltaConsumption.toLocaleString('en-GB')} · within syndicate headroom`

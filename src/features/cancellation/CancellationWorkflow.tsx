@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Power, Pencil, Check } from 'lucide-react';
 import { Button, Pill } from '@/components';
 import { useRanBerri } from '@/store';
+import { useConfig } from '@/config';
 import {
   REASON_RULES,
   commitCancellation,
@@ -610,6 +611,7 @@ function CancellationEndorsement() {
   const submission = useRanBerri((s) => s.submission);
   const c = useRanBerri((s) => s.cancellation);
   const bind = useRanBerri((s) => s.bind);
+  const config = useConfig();
   if (!submission || !c.calc || !c.request) return null;
   if (c.phase !== 'committed' && c.phase !== 'sent') return null;
 
@@ -725,7 +727,7 @@ function CancellationEndorsement() {
         >
           Signed by{' '}
           <span style={{ fontStyle: 'normal', color: 'var(--color-ink)' }}>
-            {c.signedBy ?? 'N. Sharma'}, Senior Underwriter
+            {c.signedBy ?? config.metadata.underwriterName}, {config.metadata.underwriterTitle}
           </span>
           {c.committedAt && ` · ${TIME_FMT.format(new Date(c.committedAt))} BST`}
         </p>

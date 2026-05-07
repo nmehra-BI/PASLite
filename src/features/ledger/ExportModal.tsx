@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader } from 'lucide-react';
 import { useLedger } from '@/store/ledger';
 import { useAutonomy } from '@/store/autonomy';
+import { useConfig } from '@/config';
 import { generateReport, getAllAutonomyActions } from '@/lib/ledger';
 import type { DecisionClassId } from '@/lib/autonomy/types';
 import { ExportPreview } from './ExportPreview';
@@ -46,6 +47,9 @@ export function ExportModal() {
   const setRecipient = useLedger((s) => s.setExportRecipient);
   const toggleClass = useLedger((s) => s.toggleExportClass);
   const setPhase = useLedger((s) => s.setExportPhase);
+  const config = useConfig();
+  const capacityProviderName = config.metadata.capacityProvider.name;
+  const capacityProviderEmail = config.metadata.capacityProvider.contactEmail;
   const setReport = useLedger((s) => s.setGeneratedReport);
   const setExportSent = useLedger((s) => s.setExportSent);
   const policy = useAutonomy((s) => s.policy);
@@ -159,6 +163,8 @@ export function ExportModal() {
                 <ConfigureStep
                   draft={draft}
                   policy={policy.decisionClasses}
+                  capacityProviderName={capacityProviderName}
+                  capacityProviderEmail={capacityProviderEmail}
                   setPeriod={setPeriod}
                   setFormat={setFormat}
                   setRecipient={setRecipient}
@@ -226,6 +232,8 @@ export function ExportModal() {
 function ConfigureStep({
   draft,
   policy,
+  capacityProviderName,
+  capacityProviderEmail,
   setPeriod,
   setFormat,
   setRecipient,
@@ -233,6 +241,8 @@ function ConfigureStep({
 }: {
   draft: ReturnType<typeof useLedger.getState>['exportDraft'];
   policy: ReturnType<typeof useAutonomy.getState>['policy']['decisionClasses'];
+  capacityProviderName: string;
+  capacityProviderEmail: string;
   setPeriod: ReturnType<typeof useLedger.getState>['setExportPeriod'];
   setFormat: ReturnType<typeof useLedger.getState>['setExportFormat'];
   setRecipient: ReturnType<typeof useLedger.getState>['setExportRecipient'];
@@ -300,7 +310,7 @@ function ConfigureStep({
           checked={draft.recipient === 'capacity-provider'}
           onChange={() => setRecipient('capacity-provider')}
         >
-          Syndicate 2358 (capacity provider)
+          {capacityProviderName} (capacity provider)
           <div
             className="mono"
             style={{
@@ -310,7 +320,7 @@ function ConfigureStep({
               marginTop: 2,
             }}
           >
-            report-recipient@2358.lloyd.com
+            {capacityProviderEmail}
           </div>
         </Radio>
         <Radio
@@ -338,7 +348,7 @@ function ConfigureStep({
           letterSpacing: '-0.005em',
         }}
       >
-        Reports include only the actions within Syndicate 2358&rsquo;s authority.
+        Reports include only the actions within {capacityProviderName}&rsquo;s authority.
         Other capacity providers&rsquo; actions are filtered automatically.
       </p>
     </div>

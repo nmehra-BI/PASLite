@@ -1,6 +1,7 @@
 import { Download, Send, Check } from 'lucide-react';
 import { useRanBerri } from '@/store';
 import { useLedger } from '@/store/ledger';
+import { useConfig } from '@/config';
 
 const FMT_DATE = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
@@ -20,6 +21,7 @@ export function ExportPreview() {
   const closeExport = useLedger((s) => s.closeExport);
   const exportDraft = useLedger((s) => s.exportDraft);
   const appendAuditEvent = useRanBerri((s) => s.appendAuditEvent);
+  const config = useConfig();
 
   if (!report) return null;
 
@@ -43,7 +45,7 @@ export function ExportPreview() {
 
   function onSendToCapacity() {
     if (!report) return;
-    const recipientEmail = 'report-recipient@2358.lloyd.com';
+    const recipientEmail = config.metadata.capacityProvider.contactEmail;
     appendAuditEvent({
       actor: { kind: 'underwriter', id: 'nm' },
       kind: 'ledger.exportSentToCapacity',
