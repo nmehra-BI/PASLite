@@ -3,3 +3,5 @@ export { ExceptionQueuePage } from './ExceptionQueuePage';
 export { AutonomyEyebrow } from './AutonomyEyebrow';
 export { AutonomyInspector } from './AutonomyInspector';
 export { RecallModal } from './RecallModal';
+export { EditThresholdsModal } from './EditThresholdsModal';
+export { useAutonomyOrchestrator } from './useAutonomyOrchestrator';

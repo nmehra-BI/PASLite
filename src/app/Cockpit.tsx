@@ -20,6 +20,7 @@ import { BindCompletionBanner } from '@/features/listing';
 import { ChapterNav } from '@/features/lifecycle/ChapterNav';
 import { CanvasKeyboard } from '@/features/lifecycle/CanvasKeyboard';
 import { QuickJumpModal } from '@/features/lifecycle/QuickJumpModal';
+import { useAutonomyOrchestrator } from '@/features/autonomy/useAutonomyOrchestrator';
 import { Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 
@@ -32,6 +33,7 @@ import { useState } from 'react';
  *   receiving/reading/etc.   → ExtractionSequence (split layout)
  */
 export function Cockpit() {
+  useAutonomyOrchestrator();
   return (
     <div
       style={{

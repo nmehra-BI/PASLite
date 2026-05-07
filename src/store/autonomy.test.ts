@@ -79,6 +79,18 @@ describe('autonomy store + lifecycle', () => {
     expect(useAutonomy.getState().firedByRef[ref].recallReason).toMatch(/geography/);
   });
 
+  it('schedule snapshots policyVersion; fire stamps that version even if policy bumps', () => {
+    const ref = 'SUB-99010';
+    const versionAtSchedule = useAutonomy.getState().policy.version;
+    scheduleAutonomousAction({ entryRef: ref, snapshot: snap() });
+    expect(useAutonomy.getState().scheduledByRef[ref].policyVersion).toBe(versionAtSchedule);
+    // Bump policy by mutating an unrelated class.
+    useAutonomy.getState().updateClass('TRIAGE-AUTO-PASS', { recallWindowHours: 8 }, 'nm');
+    expect(useAutonomy.getState().policy.version).not.toBe(versionAtSchedule);
+    fireAutonomousAction({ entryRef: ref });
+    expect(useAutonomy.getState().firedByRef[ref].policyVersion).toBe(versionAtSchedule);
+  });
+
   it('recallAutonomousAction throws when reason is too short', () => {
     const ref = 'SUB-99002';
     scheduleAutonomousAction({ entryRef: ref, snapshot: snap() });

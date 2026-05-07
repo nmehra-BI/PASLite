@@ -1,8 +1,12 @@
-import { ArrowLeft, FileText } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowLeft, FileText, Sliders } from 'lucide-react';
 import { useRanBerri } from '@/store';
 import { useAutonomy } from '@/store/autonomy';
 import { Pill } from '@/components';
 import type { DecisionClassConfig, DecisionClassId } from '@/lib/autonomy/types';
+import { EditThresholdsModal } from './EditThresholdsModal';
+
+const RESTRICTED_CLASSES: DecisionClassId[] = ['BIND-AUTO-COMMIT', 'NTU-AUTO-CAPTURE'];
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
@@ -20,8 +24,11 @@ export function AutonomyPolicyAdmin() {
   const metrics = useAutonomy((s) => s.metrics);
   const toggleClass = useAutonomy((s) => s.toggleClass);
   const appendAuditEvent = useRanBerri((s) => s.appendAuditEvent);
+  const [editingId, setEditingId] = useState<DecisionClassId | null>(null);
+  const [requested, setRequested] = useState<Record<string, boolean>>({});
 
   const enabledCount = Object.values(policy.decisionClasses).filter((c) => c.enabled).length;
+  const editingCls = editingId ? policy.decisionClasses[editingId] : null;
 
   function handleToggle(cls: DecisionClassConfig) {
     const next = !cls.enabled;
@@ -176,11 +183,31 @@ export function AutonomyPolicyAdmin() {
               key={cls.id}
               cls={cls}
               metrics={metrics[cls.id]}
+              isRestricted={RESTRICTED_CLASSES.includes(cls.id)}
+              isRequested={!!requested[cls.id]}
               onToggle={() => handleToggle(cls)}
+              onEdit={() => setEditingId(cls.id)}
+              onRequestEnablement={() => {
+                setRequested((r) => ({ ...r, [cls.id]: true }));
+                appendAuditEvent({
+                  actor: { kind: 'underwriter', id: 'nm' },
+                  kind: 'listing.actionTaken',
+                  viewedBy: 'nm',
+                  entryRef: cls.id,
+                  actionId: 'request-enablement',
+                });
+              }}
             />
           ))}
         </div>
       </section>
+
+      {editingCls && (
+        <EditThresholdsModal
+          cls={editingCls}
+          onClose={() => setEditingId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -223,11 +250,19 @@ function Masthead() {
 function DecisionClassCard({
   cls,
   metrics,
+  isRestricted,
+  isRequested,
   onToggle,
+  onEdit,
+  onRequestEnablement,
 }: {
   cls: DecisionClassConfig;
   metrics: ReturnType<typeof useAutonomy.getState>['metrics'][DecisionClassId];
+  isRestricted: boolean;
+  isRequested: boolean;
   onToggle: () => void;
+  onEdit: () => void;
+  onRequestEnablement: () => void;
 }) {
   const must = cls.autonomyBands.mustMatch;
   const cannot = cls.autonomyBands.cannotExceed;
@@ -338,26 +373,87 @@ function DecisionClassCard({
 
       <div
         className="hairline-t flex items-center gap-2"
-        style={{ marginTop: 12, paddingTop: 10 }}
+        style={{ marginTop: 12, paddingTop: 10, flexWrap: 'wrap' }}
       >
-        <button
-          type="button"
-          onClick={onToggle}
-          className="serif"
-          style={{
-            fontStyle: 'italic',
-            fontSize: 12.5,
-            padding: '4px 10px',
-            borderRadius: 'var(--radius-button)',
-            border: `0.5px solid ${cls.enabled ? 'var(--color-rule-mid)' : 'var(--color-accent)'}`,
-            background: cls.enabled ? 'transparent' : 'var(--color-accent)',
-            color: cls.enabled ? 'var(--color-ink-mute)' : 'var(--color-bg)',
-            cursor: 'pointer',
-            letterSpacing: '-0.005em',
-          }}
-        >
-          {cls.enabled ? 'Disable' : 'Enable'}
-        </button>
+        {/* Restricted disabled classes: enablement requires capacity-provider sign-off. */}
+        {!cls.enabled && isRestricted ? (
+          isRequested ? (
+            <span
+              className="serif"
+              style={{
+                fontStyle: 'italic',
+                fontSize: 12.5,
+                padding: '4px 10px',
+                borderRadius: 'var(--radius-button)',
+                background: 'var(--color-sunken)',
+                color: 'var(--color-ink-mute)',
+                letterSpacing: '-0.005em',
+              }}
+            >
+              Enablement requested · awaiting capacity-provider sign-off
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={onRequestEnablement}
+              className="serif"
+              style={{
+                fontStyle: 'italic',
+                fontSize: 12.5,
+                padding: '4px 10px',
+                borderRadius: 'var(--radius-button)',
+                border: '0.5px solid var(--color-accent)',
+                background: 'var(--color-accent)',
+                color: 'var(--color-bg)',
+                cursor: 'pointer',
+                letterSpacing: '-0.005em',
+              }}
+            >
+              Request enablement
+            </button>
+          )
+        ) : (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="serif"
+            style={{
+              fontStyle: 'italic',
+              fontSize: 12.5,
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-button)',
+              border: `0.5px solid ${cls.enabled ? 'var(--color-rule-mid)' : 'var(--color-accent)'}`,
+              background: cls.enabled ? 'transparent' : 'var(--color-accent)',
+              color: cls.enabled ? 'var(--color-ink-mute)' : 'var(--color-bg)',
+              cursor: 'pointer',
+              letterSpacing: '-0.005em',
+            }}
+          >
+            {cls.enabled ? 'Disable' : 'Enable'}
+          </button>
+        )}
+
+        {cls.enabled && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="serif inline-flex items-center gap-1"
+            style={{
+              fontStyle: 'italic',
+              fontSize: 12.5,
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-button)',
+              border: '0.5px solid var(--color-rule-mid)',
+              background: 'transparent',
+              color: 'var(--color-ink-mute)',
+              cursor: 'pointer',
+              letterSpacing: '-0.005em',
+            }}
+          >
+            <Sliders size={11} strokeWidth={1.5} />
+            Edit thresholds
+          </button>
+        )}
         {cls.enabled && metrics.autoFired > 0 && (
           <button
             type="button"

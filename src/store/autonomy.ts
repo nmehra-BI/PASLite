@@ -41,6 +41,17 @@ type AutonomyState = {
   resolveException: (entryRef: string) => void;
 };
 
+/** Bump the policy version on every config change.
+ *  "v1.0 · 2026-05-09" → "v1.1 · 2026-05-09" → "v1.2 · ..." */
+function bumpVersion(version: string): string {
+  const m = version.match(/^v(\d+)\.(\d+)(.*)$/);
+  if (!m) return version;
+  const [, major, minor, rest] = m;
+  const today = new Date().toISOString().slice(0, 10);
+  const tail = rest.includes('·') ? ` · ${today}` : '';
+  return `v${major}.${Number(minor) + 1}${tail}`;
+}
+
 function safeStorage(): Storage {
   if (
     typeof globalThis !== 'undefined' &&
@@ -96,6 +107,7 @@ export const useAutonomy = create<AutonomyState>()(
           return {
             policy: {
               ...s.policy,
+              version: bumpVersion(s.policy.version),
               decisionClasses: {
                 ...s.policy.decisionClasses,
                 [id]: { ...cls, ...patch },

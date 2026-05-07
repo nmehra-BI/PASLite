@@ -135,6 +135,9 @@ export type DecisionClassMetrics = {
 export type ScheduledAutonomousAction = {
   entryRef: string;
   classId: DecisionClassId;
+  /** Snapshot of policy version at schedule-time. Eventual fired
+   *  action carries this version even if the policy is later mutated. */
+  policyVersion: string;
   scheduledAt: string;
   firesAt: string;
   conditionsMet: string[];

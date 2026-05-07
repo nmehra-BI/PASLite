@@ -2,11 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RotateCcw } from 'lucide-react';
 import { useRanBerri } from '@/store';
+import { useAutonomy } from '@/store/autonomy';
 import { useIntake } from '@/features/intake';
 import { CHECK_ORDER } from '@/lib/appetite';
 import { CheckRow } from './CheckRow';
 import { VerdictPanel } from './VerdictPanel';
 import { runTriageCinematic } from './triage-engine';
+import {
+  AutonomyEyebrow,
+  RecallModal,
+} from '@/features/autonomy';
+import { fireAutonomousAction } from '@/lib/autonomy/runAutonomousAction';
 
 /**
  * The triage section. Auto-fires after enrichment is settled AND no
@@ -75,8 +81,53 @@ export function TriageSection() {
   const isEvaluating = triage.phase === 'evaluating' || running;
   const readOnly = submissionState !== 'active';
 
+  return <TriageSectionInner
+    submissionId={submission.id}
+    isStale={isStale}
+    isSettled={isSettled}
+    isEvaluating={isEvaluating}
+    readOnly={readOnly}
+    running={running}
+    triage={triage}
+    setRunning={setRunning}
+  />;
+}
+
+function TriageSectionInner({
+  submissionId,
+  isStale,
+  isSettled,
+  isEvaluating,
+  readOnly,
+  running,
+  triage,
+  setRunning,
+}: {
+  submissionId: string;
+  isStale: boolean;
+  isSettled: boolean;
+  isEvaluating: boolean;
+  readOnly: boolean;
+  running: boolean;
+  triage: ReturnType<typeof useRanBerri.getState>['triage'];
+  setRunning: (b: boolean) => void;
+}) {
+  const fired = useAutonomy((s) => s.firedByRef[submissionId]);
+  const isAutonomous = !!fired && !fired.recalled;
+
   return (
-    <section className="hairline-t" style={{ marginTop: 28, paddingTop: 22 }}>
+    <section
+      className="hairline-t"
+      style={{
+        marginTop: 28,
+        paddingTop: 22,
+        position: 'relative',
+        borderLeft: isAutonomous ? '2px solid var(--color-accent)' : 'none',
+        paddingLeft: isAutonomous ? 18 : 0,
+        transition: 'border-color 200ms ease, padding-left 200ms ease',
+      }}
+    >
+      <AutonomyBanner entryRef={submissionId} />
       <Header
         running={running}
         isStale={isStale}
@@ -207,4 +258,155 @@ function Header({
       )}
     </div>
   );
+}
+
+/**
+ * Renders the autonomy state for the triage section: scheduled
+ * countdown, fired-with-recall, or nothing. Reads from the autonomy
+ * store keyed by entryRef.
+ */
+function AutonomyBanner({ entryRef }: { entryRef: string }) {
+  const scheduled = useAutonomy((s) => s.scheduledByRef[entryRef]);
+  const fired = useAutonomy((s) => s.firedByRef[entryRef]);
+  const [recallOpen, setRecallOpen] = useState(false);
+  const [, force] = useState(0);
+
+  // Re-render once a second so the countdown advances.
+  useEffect(() => {
+    if (!scheduled && !fired) return;
+    const id = window.setInterval(() => force((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [scheduled, fired]);
+
+  if (fired && !fired.recalled) {
+    const expired = new Date(fired.recallExpiresAt).getTime() < Date.now();
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginBottom: 10,
+        }}
+      >
+        <AutonomyEyebrow
+          classId={fired.classId}
+          action={fired.action.toUpperCase()}
+          firedAt={fired.firedAt}
+          onOpen={() => setRecallOpen(true)}
+        />
+        {!expired && (
+          <button
+            type="button"
+            onClick={() => setRecallOpen(true)}
+            className="serif"
+            style={{
+              fontStyle: 'italic',
+              fontSize: 12.5,
+              padding: '3px 10px',
+              borderRadius: 'var(--radius-button)',
+              border: '0.5px solid var(--color-accent)',
+              background: 'transparent',
+              color: 'var(--color-accent)',
+              cursor: 'pointer',
+              letterSpacing: '-0.005em',
+            }}
+          >
+            Recall this action →
+          </button>
+        )}
+        {recallOpen && (
+          <RecallModal
+            entryRef={entryRef}
+            classId={fired.classId}
+            recallExpiresAt={fired.recallExpiresAt}
+            onClose={() => setRecallOpen(false)}
+            onRecalled={() => setRecallOpen(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (fired && fired.recalled) {
+    return (
+      <div
+        className="serif"
+        style={{
+          fontStyle: 'italic',
+          fontSize: 12.5,
+          color: 'var(--color-ink-mute)',
+          marginBottom: 10,
+          letterSpacing: '-0.005em',
+        }}
+      >
+        Autonomous {fired.action} was recalled
+        {fired.recalledAt
+          ? ` at ${new Date(fired.recalledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+          : ''}{' '}
+        — reverting to manual review.
+      </div>
+    );
+  }
+
+  if (scheduled) {
+    const remaining = Math.max(
+      0,
+      Math.ceil((new Date(scheduled.firesAt).getTime() - Date.now()) / 1000),
+    );
+    const mm = String(Math.floor(remaining / 60)).padStart(1, '0');
+    const ss = String(remaining % 60).padStart(2, '0');
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginBottom: 10,
+          padding: '8px 10px',
+          borderRadius: 'var(--radius-button)',
+          border: '0.5px dashed var(--color-accent)',
+          background: 'rgba(201, 99, 66, 0.04)',
+        }}
+      >
+        <span
+          className="serif"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 13,
+            color: 'var(--color-ink)',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          Auto-pass scheduled in{' '}
+          <span className="mono" style={{ letterSpacing: '0.04em', color: 'var(--color-accent)' }}>
+            {mm}:{ss}
+          </span>{' '}
+          · class {scheduled.classId}
+        </span>
+        <button
+          type="button"
+          onClick={() => fireAutonomousAction({ entryRef })}
+          className="serif"
+          style={{
+            fontStyle: 'italic',
+            fontSize: 12.5,
+            padding: '3px 10px',
+            borderRadius: 'var(--radius-button)',
+            border: '0.5px solid var(--color-accent)',
+            background: 'var(--color-accent)',
+            color: 'var(--color-bg)',
+            cursor: 'pointer',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          Review now → confirm immediately
+        </button>
+      </div>
+    );
+  }
+
+  return null;
 }

@@ -83,6 +83,7 @@ export function scheduleAutonomousAction(input: ScheduleInputs): ScheduleOutcome
   useAutonomy.getState().scheduleAction({
     entryRef: input.entryRef,
     classId: evalOutcome.classId,
+    policyVersion: policy.version,
     scheduledAt: now.toISOString(),
     firesAt,
     conditionsMet: evalOutcome.conditionsMet,
@@ -102,7 +103,11 @@ export type FireInputs = {
   now?: Date;
 };
 
-/** Fire the scheduled action immediately (or once the timer elapses). */
+/** Fire the scheduled action immediately (or once the timer elapses).
+ *  Uses the policy version snapshotted at schedule-time, not the
+ *  live policy version. The class config is still read live so the
+ *  action / recall window remain consistent with the configured class.
+ */
 export function fireAutonomousAction(input: FireInputs): boolean {
   const scheduled = useAutonomy.getState().scheduledByRef[input.entryRef];
   if (!scheduled) return false;
@@ -114,6 +119,7 @@ export function fireAutonomousAction(input: FireInputs): boolean {
   const recallExpiresAt = new Date(
     now.getTime() + cls.recallWindowHours * MS_PER_HOUR,
   ).toISOString();
+  const stampedVersion = scheduled.policyVersion;
 
   useRanBerri.getState().appendAuditEvent({
     actor: { kind: 'system' },
@@ -121,7 +127,7 @@ export function fireAutonomousAction(input: FireInputs): boolean {
     entryRef: input.entryRef,
     classId: scheduled.classId,
     action: cls.autonomousAction,
-    policyVersion: policy.version,
+    policyVersion: stampedVersion,
     conditionsMet: scheduled.conditionsMet,
     confidence: scheduled.confidence,
     byAi: input.byAi ?? 'Sonnet',
@@ -131,7 +137,7 @@ export function fireAutonomousAction(input: FireInputs): boolean {
     entryRef: input.entryRef,
     classId: scheduled.classId,
     action: cls.autonomousAction,
-    policyVersion: policy.version,
+    policyVersion: stampedVersion,
     firedAt: now.toISOString(),
     conditionsMet: scheduled.conditionsMet,
     confidence: scheduled.confidence,
