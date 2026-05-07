@@ -11,6 +11,7 @@ import { QuoteSection } from '@/features/quote';
 import { RecommendationSection } from '@/features/recommendation';
 import { BindCeremony } from '@/features/bind';
 import { ChapterAnchor } from '@/features/lifecycle/ChapterAnchor';
+import { CanvasSection } from '@/features/lifecycle/CanvasSection';
 
 /**
  * The two-column composition that frames the cinematic extraction and,
@@ -80,31 +81,30 @@ export function ExtractionSequence() {
           <ExtractingHeader phase={phase} />
         ) : (
           <ExtractedView>
+            {/* Extraction itself stays anchor-only — the user enters
+                the canvas at this view, no value in collapsing it. */}
             <ChapterAnchor chapter="extraction">
-              {/* The ExtractedView's header renders extraction metadata;
-                  this anchor sits at its top so chapter-nav clicks
-                  scroll to the start of the extraction view. */}
               <span style={{ display: 'block', height: 0 }} aria-hidden />
             </ChapterAnchor>
-            <ChapterAnchor chapter="enrichment">
+            <CanvasSection chapter="enrichment">
               <EnrichmentSection />
-            </ChapterAnchor>
-            <ChapterAnchor chapter="triage">
+            </CanvasSection>
+            <CanvasSection chapter="triage">
               <TriageSection />
-            </ChapterAnchor>
-            <ChapterAnchor chapter="rating">
+            </CanvasSection>
+            <CanvasSection chapter="rating">
               <RatingSection />
-            </ChapterAnchor>
-            <ChapterAnchor chapter="quote">
+            </CanvasSection>
+            <CanvasSection chapter="quote">
               <QuoteSection />
-            </ChapterAnchor>
-            <ChapterAnchor chapter="recommendation">
+            </CanvasSection>
+            <CanvasSection chapter="recommendation">
               <RecommendationSection />
-            </ChapterAnchor>
+            </CanvasSection>
             {bindPhase === 'in-progress' && (
-              <ChapterAnchor chapter="bind">
+              <CanvasSection chapter="bind">
                 <BindCeremony />
-              </ChapterAnchor>
+              </CanvasSection>
             )}
           </ExtractedView>
         )}

@@ -54,8 +54,10 @@ export function PostBindCanvas() {
         background: 'var(--color-bg)',
       }}
     >
+      {/* Bind chapter stays anchor-only: the user has just landed
+          on the bound policy and the schedule + subjectivities are
+          the post-bind monitoring surface they expect to see. */}
       <ChapterAnchor chapter="bind">
-        {/* Bind summary strip — collapsed ceremony as single line. */}
         <button
           type="button"
           onClick={() => setShowCertificate(true)}
@@ -106,6 +108,11 @@ export function PostBindCanvas() {
         <ScheduleSection />
         <SubjectivitiesPanel />
       </ChapterAnchor>
+      {/* MTA + cancellation stay anchor-only: their entry points
+          (the intake buttons) must remain clickable when the chapter
+          is "pending", which the SectionCollapse greyout would
+          break. The workflows themselves render their own internal
+          structure once active. */}
       <ChapterAnchor chapter="mta-04">
         <MtaIntakeButton />
         <MtaWorkflow />

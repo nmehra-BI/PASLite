@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowDownUp, Download, X } from 'lucide-react';
+import { ArrowDownUp } from 'lucide-react';
 import { useRanBerri } from '@/store';
+import { InspectorChrome } from '@/components/inspector';
 import { AuditFilters, eventMatchesFilter, type AuditFilterKey } from './AuditFilters';
 import { AuditEventRow } from './AuditEventRow';
 
 /**
  * The full chronological audit log view. Opens as a side panel from
- * the canvas top bar. Filterable by event family; sortable by time;
- * exportable as JSON.
+ * the canvas top bar OR from the decision trail's "see all events →"
+ * link (module 13). Standardised chrome via InspectorChrome.
  */
 export function AuditLogInspector() {
   const open = useRanBerri((s) => s.ui.auditLogOpen);
@@ -80,47 +81,23 @@ export function AuditLogInspector() {
           minHeight: 0,
         }}
       >
-        <div
-          className="hairline-b flex items-center justify-between"
-          style={{ padding: '14px 22px', flex: '0 0 auto' }}
+        <InspectorChrome
+          breadcrumb={`AUDIT · ${policyRef}`}
+          title="Full event chronology"
+          subtitle={`${log.length} events · canonical persistence form`}
+          onClose={() => setOpen(false)}
+          onExport={exportLog}
         >
-          <div>
-            <div className="eyebrow">audit log · {policyRef}</div>
-            <div
-              className="serif"
-              style={{
-                fontSize: 16,
-                fontWeight: 500,
-                marginTop: 2,
-                letterSpacing: '-0.01em',
-                color: 'var(--color-ink)',
-              }}
-            >
-              Full event chronology
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label="Close"
-            style={{ padding: 6, color: 'var(--color-ink-mute)' }}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              padding: '8px 0 10px',
+            }}
           >
-            <X size={16} strokeWidth={1.5} />
-          </button>
-        </div>
-
-        <div
-          style={{
-            padding: '12px 22px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            flex: '0 0 auto',
-          }}
-        >
-          <AuditFilters active={filter} onChange={setFilter} />
-          <div className="flex items-center gap-2">
+            <AuditFilters active={filter} onChange={setFilter} />
             <button
               type="button"
               onClick={() => setSortDesc((v) => !v)}
@@ -140,29 +117,8 @@ export function AuditLogInspector() {
               <ArrowDownUp size={9} strokeWidth={1.5} />
               {sortDesc ? 'newest' : 'oldest'}
             </button>
-            <button
-              type="button"
-              onClick={exportLog}
-              title="Export audit log JSON"
-              className="mono inline-flex items-center gap-1"
-              style={{
-                fontSize: 10,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                padding: '3px 9px',
-                borderRadius: 'var(--radius-pill)',
-                border: '0.5px solid var(--color-rule-mid)',
-                color: 'var(--color-ink-mute)',
-                background: 'transparent',
-              }}
-            >
-              <Download size={9} strokeWidth={1.5} />
-              export
-            </button>
           </div>
-        </div>
 
-        <div style={{ flex: 1, overflow: 'auto', padding: '4px 22px 22px' }}>
           {filtered.length === 0 ? (
             <p
               className="serif"
@@ -182,26 +138,7 @@ export function AuditLogInspector() {
               ))}
             </ol>
           )}
-        </div>
-
-        <div
-          className="hairline-t"
-          style={{ padding: '10px 22px', flex: '0 0 auto' }}
-        >
-          <p
-            className="serif"
-            style={{
-              fontStyle: 'italic',
-              fontSize: 11.5,
-              color: 'var(--color-ink-faint)',
-              margin: 0,
-              lineHeight: 1.55,
-            }}
-          >
-            {log.length} total events · canonical persistence form · same log
-            in → same state out
-          </p>
-        </div>
+        </InspectorChrome>
       </motion.aside>
     </motion.div>
   );

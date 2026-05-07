@@ -8,6 +8,7 @@ import { SimilarBindersTable } from './SimilarBindersTable';
 import { SimilarLossesTable } from './SimilarLossesTable';
 import { CompetitiveIntelCard } from './CompetitiveIntelCard';
 import { RecordDetailModal } from './RecordDetailModal';
+import { useCanvasUI } from '@/store/canvasUI';
 
 type DetailTarget =
   | { kind: 'binder'; record: HistoricalBinder }
@@ -25,6 +26,17 @@ type Props = { onClose: () => void };
 export function DeepDiveInspector({ onClose }: Props) {
   const recommendation = useRanBerri((s) => s.recommendation);
   const [detail, setDetail] = useState<DetailTarget | null>(null);
+  const pushInspector = useCanvasUI((s) => s.pushInspector);
+  const popInspector = useCanvasUI((s) => s.popInspector);
+
+  function openDetail(target: DetailTarget) {
+    pushInspector({ kind: 'deep-dive', title: 'Why this recommendation' });
+    setDetail(target);
+  }
+  function closeDetail() {
+    popInspector();
+    setDetail(null);
+  }
   const binders = recommendation.similarBinderIds
     .map(lookupBinder)
     .filter(Boolean) as NonNullable<ReturnType<typeof lookupBinder>>[];
@@ -183,7 +195,7 @@ export function DeepDiveInspector({ onClose }: Props) {
           <Section title={`Similar binders (top ${binders.length})`}>
             <SimilarBindersTable
               binders={binders}
-              onRowClick={(b) => setDetail({ kind: 'binder', record: b })}
+              onRowClick={(b) => openDetail({ kind: 'binder', record: b })}
             />
           </Section>
 
@@ -191,7 +203,7 @@ export function DeepDiveInspector({ onClose }: Props) {
           <Section title={`Similar losses (top ${losses.length})`}>
             <SimilarLossesTable
               losses={losses}
-              onRowClick={(l) => setDetail({ kind: 'loss', record: l })}
+              onRowClick={(l) => openDetail({ kind: 'loss', record: l })}
             />
           </Section>
 
@@ -235,7 +247,7 @@ export function DeepDiveInspector({ onClose }: Props) {
       </motion.aside>
 
       {detail && (
-        <RecordDetailModal target={detail} onClose={() => setDetail(null)} />
+        <RecordDetailModal target={detail} onClose={closeDetail} />
       )}
     </motion.div>
   );
