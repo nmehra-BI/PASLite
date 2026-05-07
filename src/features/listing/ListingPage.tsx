@@ -84,9 +84,13 @@ export function ListingPage() {
         }}
       />
       <main style={{ flex: 1 }}>
-        {groups.map((g, i) => (
-          <ListSection key={g.key} group={g} index={i} />
-        ))}
+        {groups.map((g, i) => {
+          // Hide empty sections when a tab filter narrows the list,
+          // but keep the "0 matching" hint when a search is active so
+          // the user understands their query produced no hits.
+          if (filter !== 'all' && g.count === 0) return null;
+          return <ListSection key={g.key} group={g} index={i} />;
+        })}
       </main>
       <Footer />
     </div>

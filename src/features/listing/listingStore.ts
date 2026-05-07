@@ -14,11 +14,15 @@ type ListingStoreState = {
   filter: FilterTab;
   query: string;
   searchOpen: boolean;
+  /** Set when the underwriter drilled into a row from the listing.
+   *  The canvas reads this to show a "Return to all submissions →"
+   *  completion banner once a workflow commits. Cleared on return. */
+  drilledFromListing: { ref: string; at: string } | null;
   setFilter: (f: FilterTab) => void;
   setQuery: (q: string) => void;
   setSearchOpen: (o: boolean) => void;
-  /** Stamp lastChaseAt on a given ref. Idempotent. */
   recordChase: (ref: string) => void;
+  setDrilledFromListing: (ctx: { ref: string } | null) => void;
 };
 
 function safeStorage(): Storage {
@@ -52,6 +56,7 @@ export const useListingStore = create<ListingStoreState>()(
       filter: 'all',
       query: '',
       searchOpen: false,
+      drilledFromListing: null,
       setFilter: (f) => set({ filter: f }),
       setQuery: (q) => set({ query: q }),
       setSearchOpen: (o) => set({ searchOpen: o }),
@@ -61,11 +66,21 @@ export const useListingStore = create<ListingStoreState>()(
             e.ref === ref ? { ...e, lastChaseAt: new Date().toISOString() } : e,
           ),
         })),
+      setDrilledFromListing: (ctx) =>
+        set({
+          drilledFromListing: ctx
+            ? { ref: ctx.ref, at: new Date().toISOString() }
+            : null,
+        }),
     }),
     {
       name: 'ranberri.listing.v0',
       storage: createJSONStorage(() => safeStorage()),
-      partialize: (s) => ({ filter: s.filter, entries: s.entries }),
+      partialize: (s) => ({
+        filter: s.filter,
+        entries: s.entries,
+        drilledFromListing: s.drilledFromListing,
+      }),
     },
   ),
 );

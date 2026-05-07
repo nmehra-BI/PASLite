@@ -28,6 +28,7 @@ const GLYPH: Record<ListingEntry['glyph'], { char: string; color: string }> = {
 export function SubmissionRow({ entry }: { entry: ListingEntry }) {
   const [chaseOpen, setChaseOpen] = useState(false);
   const recordChase = useListingStore((s) => s.recordChase);
+  const setDrilledFromListing = useListingStore((s) => s.setDrilledFromListing);
   const appendAuditEvent = useRanBerri((s) => s.appendAuditEvent);
   const glyph = GLYPH[entry.glyph];
   const priority = PRIORITY_TONE[entry.priority];
@@ -54,6 +55,7 @@ export function SubmissionRow({ entry }: { entry: ListingEntry }) {
       return;
     }
     if (action.drillsToCanvas) {
+      setDrilledFromListing({ ref: entry.ref });
       navigateToCanvas(entry.ref);
     }
   }
@@ -66,6 +68,7 @@ export function SubmissionRow({ entry }: { entry: ListingEntry }) {
       entryRef: entry.ref,
       actionId: 'open-canvas',
     });
+    setDrilledFromListing({ ref: entry.ref });
     navigateToCanvas(entry.ref);
   }
 
