@@ -10,6 +10,7 @@ import {
   CancellationIntakeButton,
   CancellationWorkflow,
 } from '@/features/cancellation';
+import { RenewalIntakeButton, RenewalWorkflow } from '@/features/renewal';
 import { ChapterAnchor } from '@/features/lifecycle/ChapterAnchor';
 
 const TIME_FMT = new Intl.DateTimeFormat('en-GB', {
@@ -120,6 +121,10 @@ export function PostBindCanvas() {
       <ChapterAnchor chapter="cancellation">
         <CancellationIntakeButton />
         <CancellationWorkflow />
+      </ChapterAnchor>
+      <ChapterAnchor chapter="renewal">
+        <RenewalIntakeButton />
+        <RenewalWorkflow />
       </ChapterAnchor>
 
       <SubjectivityInspector />
