@@ -433,13 +433,23 @@ type Props = {
   width?: number;
 };
 
+const RAIL_LIMIT = 8;
+
 export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
   const log = useRanBerri((s) => s.auditLog);
   const artifacts = useRanBerri((s) => s.artifacts);
   const submission = useRanBerri((s) => s.submission);
+  const setAuditLogOpen = useRanBerri((s) => s.setAuditLogOpen);
   const borderClass = side === 'right' ? 'hairline-l' : 'hairline-r';
 
-  const entries = aggregate(log);
+  // Module 13 — relevance-ranked truncation. The full chronology
+  // remains available via "see all N events →" (which opens module
+  // 8's AuditLogInspector) and via the history icon in TopBar.
+  const allEntries = aggregate(log);
+  const totalCount = allEntries.length;
+  const entries =
+    totalCount <= RAIL_LIMIT ? allEntries : pickRelevantEntries(allEntries, RAIL_LIMIT);
+
   const pendingArtifacts = submission
     ? ALL_ARTIFACTS.filter((k) => artifacts[k].computedAt === null)
     : [];
@@ -486,6 +496,20 @@ export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
         >
           every meaningful state transition, in order.
         </p>
+        {totalCount > RAIL_LIMIT && (
+          <p
+            className="serif"
+            style={{
+              fontStyle: 'italic',
+              fontSize: 11,
+              color: 'var(--color-ink-faint)',
+              margin: '6px 0 0',
+              letterSpacing: '-0.005em',
+            }}
+          >
+            showing <span className="mono" style={{ fontSize: 10.5, letterSpacing: '0.04em' }}>{entries.length}</span> of <span className="mono" style={{ fontSize: 10.5, letterSpacing: '0.04em' }}>{totalCount}</span> events
+          </p>
+        )}
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '0 16px 16px' }}>
@@ -515,6 +539,30 @@ export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
             ))}
           </ol>
         )}
+        {totalCount > RAIL_LIMIT && (
+          <button
+            type="button"
+            onClick={() => setAuditLogOpen(true)}
+            className="serif"
+            style={{
+              marginTop: 14,
+              padding: '6px 0',
+              background: 'transparent',
+              border: 0,
+              color: 'var(--color-accent)',
+              fontStyle: 'italic',
+              fontSize: 12,
+              cursor: 'pointer',
+              letterSpacing: '-0.005em',
+              textDecoration: 'underline',
+              textDecorationStyle: 'dotted',
+              textUnderlineOffset: 3,
+              textDecorationColor: 'var(--color-accent)',
+            }}
+          >
+            see all {totalCount} events →
+          </button>
+        )}
       </div>
 
       <div
@@ -540,6 +588,57 @@ export function DecisionTrail({ side = 'left', width = 296 }: Props = {}) {
       </div>
     </aside>
   );
+}
+
+/**
+ * Module 13 relevance picker. Operates on the already-aggregated
+ * EventEntry list (so we keep all the subtitle annotation work the
+ * aggregate() pass produced) and selects up to `limit` entries
+ * weighted by milestone status + recency.
+ */
+const MILESTONE_KINDS: ReadonlySet<AuditEvent['kind']> = new Set([
+  'bind.committed',
+  'bind.ceremonyStarted',
+  'mta.committed',
+  'mta.requestReceived',
+  'cancellation.committed',
+  'cancellation.requestReceived',
+  'renewal.committed',
+  'renewal.triggered',
+  'quote.sent',
+  'schedule.sent',
+  'schedule.generated',
+  'rating.completed',
+  'recommendation.completed',
+  'triage.completed',
+  'extraction.completed',
+  'submission.created',
+]);
+
+function pickRelevantEntries(entries: EventEntry[], limit: number): EventEntry[] {
+  const milestones = entries.filter((e) => MILESTONE_KINDS.has(e.event.kind));
+  const others = entries.filter((e) => !MILESTONE_KINDS.has(e.event.kind));
+  // Take all milestones up to limit; backfill with the most-recent
+  // non-milestone entries.
+  const taken = new Set<string>();
+  const out: EventEntry[] = [];
+  for (let i = milestones.length - 1; i >= 0 && out.length < limit; i--) {
+    const e = milestones[i]!;
+    if (!taken.has(e.event.id)) {
+      out.push(e);
+      taken.add(e.event.id);
+    }
+  }
+  for (let i = others.length - 1; i >= 0 && out.length < limit; i--) {
+    const e = others[i]!;
+    if (!taken.has(e.event.id)) {
+      out.push(e);
+      taken.add(e.event.id);
+    }
+  }
+  // Re-sort chronologically newest-first.
+  out.sort((a, b) => new Date(b.event.at).getTime() - new Date(a.event.at).getTime());
+  return out;
 }
 
 function EventRow({ entry }: { entry: EventEntry }) {

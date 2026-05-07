@@ -17,6 +17,9 @@ import { AuditLogInspector } from '@/features/audit';
 import { HistoricalScrubOverlay } from '@/features/lifecycle/HistoricalScrubOverlay';
 import { BindIdentityStrip } from '@/features/bind/BindIdentityStrip';
 import { BindCompletionBanner } from '@/features/listing';
+import { ChapterNav } from '@/features/lifecycle/ChapterNav';
+import { CanvasKeyboard } from '@/features/lifecycle/CanvasKeyboard';
+import { QuickJumpModal } from '@/features/lifecycle/QuickJumpModal';
 import { Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 
@@ -49,6 +52,8 @@ export function Cockpit() {
       </div>
       <SeamAnimation />
       <AuditLogInspector />
+      <CanvasKeyboard />
+      <QuickJumpModal />
     </div>
   );
 }
@@ -69,6 +74,7 @@ function CanvasColumn() {
     >
       <CanvasSubject />
       <RibbonBand />
+      <ChapterNav />
       <BindIdentityStrip />
       <HistoricalScrubOverlay />
       <TerminalBanner />
