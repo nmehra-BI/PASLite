@@ -123,6 +123,14 @@ const KIND_LABEL: Record<AuditEvent['kind'], string> = {
   'listing.actionTaken': 'Listing action taken',
   'listing.searchPerformed': 'Listing search performed',
   'chase.sent': 'Chase email sent',
+  // Module 14 — autonomy
+  'autonomy.policyEnabled': 'Autonomy class enabled',
+  'autonomy.policyDisabled': 'Autonomy class disabled',
+  'autonomy.policyConfigured': 'Autonomy class reconfigured',
+  'autonomy.actionScheduled': 'Autonomous action scheduled',
+  'autonomy.actionFired': 'Autonomous action fired',
+  'autonomy.actionRecalled': 'Autonomous action recalled',
+  'autonomy.exceptionFlagged': 'Exception flagged',
 };
 
 const ARTIFACT_LABEL: Record<ArtifactKey, string> = {

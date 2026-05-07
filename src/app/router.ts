@@ -5,7 +5,9 @@ export type Route =
   | { name: 'pitch' }
   | { name: 'cockpit' }
   | { name: 'submission'; id: string }
-  | { name: 'policy'; id: string };
+  | { name: 'policy'; id: string }
+  | { name: 'autonomy-admin' }
+  | { name: 'exceptions' };
 
 function parseHash(): Route {
   if (typeof window === 'undefined') return { name: 'listing' };
@@ -13,6 +15,8 @@ function parseHash(): Route {
   if (h === '' || h === '/') return { name: 'listing' };
   if (h === 'pitch') return { name: 'pitch' };
   if (h === 'cockpit') return { name: 'cockpit' };
+  if (h === 'settings/autonomy') return { name: 'autonomy-admin' };
+  if (h === 'exceptions') return { name: 'exceptions' };
   const sub = h.match(/^submission\/(.+)$/);
   if (sub) return { name: 'submission', id: sub[1]!.toUpperCase() };
   const pol = h.match(/^policy\/(.+)$/);

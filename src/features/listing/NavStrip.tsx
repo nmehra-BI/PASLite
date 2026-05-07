@@ -1,5 +1,6 @@
-import { Search, Plus } from 'lucide-react';
+import { Search, Plus, Settings, Zap } from 'lucide-react';
 import { useListingStore } from './listingStore';
+import { useAutonomy } from '@/store/autonomy';
 import type { FilterTab } from '@/lib/listing';
 
 const TABS: Array<{ key: FilterTab; label: string }> = [
@@ -16,6 +17,7 @@ export function NavStrip({ onNewSubmission }: { onNewSubmission: () => void }) {
   const setSearchOpen = useListingStore((s) => s.setSearchOpen);
   const query = useListingStore((s) => s.query);
   const setQuery = useListingStore((s) => s.setQuery);
+  const exceptionCount = useAutonomy((s) => s.exceptions.length);
 
   return (
     <nav
@@ -57,6 +59,55 @@ export function NavStrip({ onNewSubmission }: { onNewSubmission: () => void }) {
       </div>
 
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            window.location.hash = '#/exceptions';
+          }}
+          className="serif inline-flex items-center gap-1.5"
+          aria-label={`Exception queue · ${exceptionCount}`}
+          style={{
+            fontStyle: 'italic',
+            fontSize: 12.5,
+            color: exceptionCount > 0 ? 'var(--color-accent)' : 'var(--color-ink-mute)',
+            background: 'transparent',
+            padding: '4px 10px',
+            borderRadius: 'var(--radius-button)',
+            border: '0.5px solid var(--color-rule-mid)',
+            cursor: 'pointer',
+            letterSpacing: '-0.005em',
+          }}
+        >
+          <Zap size={11} strokeWidth={1.5} />
+          Exception queue
+          <span
+            className="mono"
+            style={{
+              fontSize: 10,
+              letterSpacing: '0.06em',
+              color: exceptionCount > 0 ? 'var(--color-accent)' : 'var(--color-ink-faint)',
+            }}
+          >
+            {exceptionCount}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            window.location.hash = '#/settings/autonomy';
+          }}
+          aria-label="Autonomy policy"
+          className="inline-flex items-center justify-center"
+          style={{
+            padding: 6,
+            borderRadius: 'var(--radius-button)',
+            color: 'var(--color-ink-mute)',
+            background: 'transparent',
+            border: 0,
+          }}
+        >
+          <Settings size={14} strokeWidth={1.5} />
+        </button>
         {searchOpen ? (
           <input
             autoFocus

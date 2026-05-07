@@ -897,6 +897,75 @@ export type AuditEvent = AuditEventBase &
         body: string;
         sentBy: string;
       }
+
+    // Autonomy + exception queue (module 14)
+    | {
+        kind: 'autonomy.policyEnabled';
+        classId: string;
+        approvedBy: string;
+        policyVersion: string;
+      }
+    | {
+        kind: 'autonomy.policyDisabled';
+        classId: string;
+        disabledBy: string;
+        policyVersion: string;
+      }
+    | {
+        kind: 'autonomy.policyConfigured';
+        classId: string;
+        policyVersion: string;
+        diff: Record<string, { from: unknown; to: unknown }>;
+        configuredBy: string;
+      }
+    | {
+        kind: 'autonomy.actionScheduled';
+        entryRef: string;
+        classId: string;
+        firesAt: ISO8601;
+        conditionsMet: string[];
+        confidence: number;
+      }
+    | {
+        kind: 'autonomy.actionFired';
+        entryRef: string;
+        classId: string;
+        action:
+          | 'pass'
+          | 'refer'
+          | 'decline'
+          | 'bind'
+          | 'ntu'
+          | 'resolve-conflict'
+          | 'resolve-gap';
+        policyVersion: string;
+        conditionsMet: string[];
+        confidence: number;
+        byAi: string;
+        recallExpiresAt: ISO8601;
+      }
+    | {
+        kind: 'autonomy.actionRecalled';
+        entryRef: string;
+        classId: string;
+        firedAt: ISO8601;
+        reason: string;
+        recalledBy: string;
+        overrideTo?: 'refer' | 'decline' | 'pass' | 'manual';
+      }
+    | {
+        kind: 'autonomy.exceptionFlagged';
+        entryRef: string;
+        reasonCategory:
+          | 'confidence'
+          | 'conflict'
+          | 'capacity'
+          | 'sanctions'
+          | 'profile-edge'
+          | 'broker-history';
+        reason: string;
+        priority: 'high' | 'medium' | 'low';
+      }
   );
 
 export type AuditEventKind = AuditEvent['kind'];

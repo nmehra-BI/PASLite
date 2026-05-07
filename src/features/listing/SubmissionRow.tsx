@@ -5,6 +5,7 @@ import type { ListingAction, ListingEntry } from '@/lib/listing';
 import { useListingStore } from './listingStore';
 import { useRanBerri } from '@/store';
 import { InlineChaseEmailModal } from './InlineChaseEmailModal';
+import { AutonomyIndicator } from './AutonomyIndicator';
 
 const PRIORITY_TONE: Record<
   ListingEntry['priority'],
@@ -135,17 +136,22 @@ export function SubmissionRow({ entry }: { entry: ListingEntry }) {
             </span>
           </div>
           <span
-            className="mono"
-            style={{
-              fontSize: 9.5,
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              color: priority.color,
-              fontWeight: 500,
-              flex: '0 0 auto',
-            }}
+            className="inline-flex items-center gap-2"
+            style={{ flex: '0 0 auto' }}
           >
-            {priority.label}
+            <AutonomyIndicator entryRef={entry.ref} />
+            <span
+              className="mono"
+              style={{
+                fontSize: 9.5,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                color: priority.color,
+                fontWeight: 500,
+              }}
+            >
+              {priority.label}
+            </span>
           </span>
         </div>
 
