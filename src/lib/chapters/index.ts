@@ -106,8 +106,11 @@ export function deriveChapters(s: RanBerriState): ChapterDescriptor[] {
     {
       id: 'renewal',
       label: 'Renewal',
-      available: renewalActive,
-      status: status(renewalActive, renewed, renewalActive && !renewed),
+      // Once the policy is bound, the renewal anchor is discoverable
+      // on the post-bind canvas (the demo trigger lives there) — make
+      // the chapter clickable from then on, not just after trigger.
+      available: bound || renewalActive,
+      status: status(bound || renewalActive, renewed, renewalActive && !renewed),
     },
   ];
 }
