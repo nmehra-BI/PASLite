@@ -14,12 +14,13 @@ import { StalenessBanner } from '@/components';
 import { SeamAnimation } from '@/features/bind';
 import { PostBindCanvas } from '@/features/postbind';
 import { AuditLogInspector } from '@/features/audit';
-import { HistoricalScrubOverlay } from '@/features/lifecycle/HistoricalScrubOverlay';
 import { BindIdentityStrip } from '@/features/bind/BindIdentityStrip';
 import { BindCompletionBanner } from '@/features/listing';
 import { ChapterNav } from '@/features/lifecycle/ChapterNav';
 import { CanvasKeyboard } from '@/features/lifecycle/CanvasKeyboard';
 import { QuickJumpModal } from '@/features/lifecycle/QuickJumpModal';
+import { RibbonStatusBar } from '@/features/lifecycle/RibbonStatusBar';
+import { RibbonFirstEncounterCue } from '@/features/lifecycle/RibbonFirstEncounterCue';
 import { useAutonomyOrchestrator } from '@/features/autonomy/useAutonomyOrchestrator';
 import { Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
@@ -76,9 +77,10 @@ function CanvasColumn() {
     >
       <CanvasSubject />
       <RibbonBand />
+      <RibbonStatusBar />
+      <RibbonFirstEncounterCue />
       <ChapterNav />
       <BindIdentityStrip />
-      <HistoricalScrubOverlay />
       <TerminalBanner />
       <QuoteSentBanner />
       <PendingActionBanner />

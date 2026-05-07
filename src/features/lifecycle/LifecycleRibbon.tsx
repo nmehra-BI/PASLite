@@ -1,7 +1,13 @@
+import { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useRanBerri } from '@/store';
 import type { LifecycleMilestone } from '@/lib/fixtures';
 import { daysUntilCritical } from '@/lib/fixtures/subjectivities';
 import type { SubjectivityRecord } from '@/lib/bind/types';
+import { MilestoneTooltip } from './MilestoneTooltip';
+import { PhaseLabelTooltip } from './PhaseLabelTooltip';
+import { SeamLabelTooltip } from './SeamLabelTooltip';
+import { milestoneDate } from './milestoneMeta';
 
 type MilestoneSpec = {
   key: LifecycleMilestone;
@@ -43,6 +49,8 @@ const SEAMS: SeamSpec[] = [
   { label: 'policy succeeds (renewal)', at: 0.94 },
 ];
 
+const HOVER_DELAY_MS = 200;
+
 type Props = {
   /** Tighter geometry, suitable for embedding in a canvas header strip. */
   compact?: boolean;
@@ -59,9 +67,6 @@ type Props = {
  *   row C — milestone names (sans)
  *   row D — playhead arrow + "now" italic
  *   row E — seam labels     (italic serif faint)
- *
- * Seam labels live in their own row below everything, so they cannot
- * collide with phase headers.
  */
 export function LifecycleRibbon({ compact = false }: Props = {}) {
   const cursor = useRanBerri((s) => s.lifecycle.cursor);
@@ -70,6 +75,7 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
   const bindPhase = useRanBerri((s) => s.bind.phase);
   const subjectivities = useRanBerri((s) => s.postBind.subjectivities);
   const policy = useRanBerri((s) => s.policy);
+  const fullState = useRanBerri();
 
   const cursorSpec = MILESTONES.find((m) => m.key === cursor) ?? MILESTONES[0]!;
   const nowSpec = MILESTONES.find((m) => m.key === now) ?? MILESTONES[0]!;
@@ -79,28 +85,18 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
   const isCancelled = cancellation.phase === 'committed' || cancellation.phase === 'sent';
   const renewal = useRanBerri((s) => s.renewal);
   const isRenewed = renewal.phase === 'committed' || renewal.phase === 'sent';
-  // Hide Renewal once the policy is cancelled — there is no renewal
-  // to forecast on a terminated policy. Hide Cancel once renewal has
-  // succeeded — the year-1 policy never cancelled, it succeeded.
   const visibleMilestones = MILESTONES.filter((m) => {
     if (isCancelled && m.key === 'renewal') return false;
     if (isRenewed && m.key === 'cancel') return false;
     return true;
   });
 
-  // MTA mini-markers between Bind (0.26) and MTA-04 (0.5). Each
-  // committed endorsement gets a small filled coral dot at a fraction
-  // of the (0.26 → 0.5) span.
   const mtaMiniMarkers = policy.versions.map((v, i) => {
     const fraction = (i + 1) / Math.max(1, policy.versions.length + 0.5);
     const at = 0.26 + fraction * (0.5 - 0.26);
     return { id: v.versionId, at, label: `MTA-0${v.endorsementNumber}` };
   });
 
-  // Project active subjectivities with critical dates onto the ribbon.
-  // A 365-day in-force window maps to the seam→cancel range
-  // (0.18 → 0.74). For the demo, the Greenline Leeds permit at ~53
-  // days lands ~0.26 into that span.
   const subjectivityTicks = subjectivities
     .filter((s): s is SubjectivityRecord => s.criticalDate !== null && s.status === 'active')
     .map((s) => {
@@ -152,28 +148,20 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
       )}
 
       <div className="relative" style={{ height: total }}>
-        {/* row A: phase labels */}
+        {/* row A: phase labels (with hover tooltips) */}
         {PHASES.map((p) => {
           const left = `${p.from * 100}%`;
           const width = `${(p.to - p.from) * 100}%`;
           return (
-            <div
+            <PhaseLabelArea
               key={p.label}
-              className="absolute flex items-center justify-center"
-              style={{
-                left,
-                width,
-                top: yA,
-                height: ROW_A,
-                fontFamily: 'var(--font-serif)',
-                fontStyle: 'italic',
-                fontSize: phaseFontSize,
-                color: 'var(--color-ink-mute)',
-              }}
-              aria-hidden
-            >
-              {p.label}
-            </div>
+              label={p.label}
+              left={left}
+              width={width}
+              top={yA}
+              height={ROW_A}
+              fontSize={phaseFontSize}
+            />
           );
         })}
 
@@ -188,7 +176,7 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
           aria-hidden
         />
 
-        {/* phase tint band — barely visible thicker stripe under in-force */}
+        {/* phase tint band */}
         <div
           className="absolute"
           style={{
@@ -201,7 +189,7 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
           aria-hidden
         />
 
-        {/* seam vertical hairlines spanning rows B–E */}
+        {/* seam vertical hairlines */}
         {SEAMS.map((seam, i) => {
           const isBecomePolicySeam = i === 0;
           const isPolicyTerminatesSeam = i === 1;
@@ -230,8 +218,7 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
           );
         })}
 
-        {/* MTA mini-markers — small filled coral dots on the track,
-            between Bind and MTA-04, one per committed endorsement. */}
+        {/* MTA mini-markers */}
         {mtaMiniMarkers.map((m) => (
           <span
             key={`mta-${m.id}`}
@@ -252,9 +239,7 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
           />
         ))}
 
-        {/* subjectivity ticks — small gilt vertical marks rendered
-            ABOVE the track so they read as forecast obligations,
-            distinct from the milestone dots that sit on the track. */}
+        {/* subjectivity ticks */}
         {subjectivityTicks.map((tick) => (
           <button
             key={`tick-${tick.id}`}
@@ -265,8 +250,6 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
             className="absolute"
             style={{
               left: `${tick.at * 100}%`,
-              // Sit fully above the track in the upper portion of row B,
-              // clear of milestone dots that span trackY ± 4.5.
               top: trackY - 18,
               width: 14,
               height: 14,
@@ -292,83 +275,29 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
           </button>
         ))}
 
-        {/* row B: milestone dots */}
-        {visibleMilestones.map((m) => {
-          const isCursor = m.key === cursor;
-          const isNow = m.key === now;
-          const dotBg = isNow
-            ? 'var(--color-accent)'
-            : isCursor
-              ? 'var(--color-ink)'
-              : 'var(--color-surface)';
-          const dotBorder = isNow
-            ? 'var(--color-accent)'
-            : isCursor
-              ? 'var(--color-ink)'
-              : 'var(--color-rule-mid)';
-          return (
-            <button
-              key={m.key}
-              type="button"
-              onClick={() => scrub(m.key)}
-              className="absolute"
-              style={{
-                left: `${m.at * 100}%`,
-                top: trackY - 12,
-                width: 24,
-                height: 24,
-                transform: 'translateX(-50%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-              aria-label={`Scrub to ${m.label}`}
-              aria-current={isCursor ? 'step' : undefined}
-            >
-              <span
-                style={{
-                  width: compact ? 8 : 9,
-                  height: compact ? 8 : 9,
-                  borderRadius: 999,
-                  background: dotBg,
-                  border: `0.5px solid ${dotBorder}`,
-                  opacity: m.real || isCursor || isNow ? 1 : 0.6,
-                }}
-              />
-            </button>
-          );
-        })}
+        {/* milestone areas (dot + label + hover/click affordances) */}
+        {visibleMilestones.map((m) => (
+          <MilestoneArea
+            key={m.key}
+            milestone={m}
+            cursor={cursor}
+            now={now}
+            trackY={trackY}
+            yC={yC}
+            rowC={ROW_C}
+            compact={compact}
+            milestoneFontSize={milestoneFontSize}
+            date={milestoneDate(m.key, fullState)}
+            onScrub={() => scrub(m.key)}
+          />
+        ))}
 
-        {/* row C: milestone names */}
-        {visibleMilestones.map((m) => {
-          const isCursor = m.key === cursor;
-          return (
-            <div
-              key={`${m.key}-label`}
-              className="absolute flex items-center justify-center"
-              style={{
-                left: `${m.at * 100}%`,
-                top: yC,
-                height: ROW_C,
-                transform: 'translateX(-50%)',
-                fontFamily: 'var(--font-sans)',
-                fontSize: milestoneFontSize,
-                fontWeight: isCursor ? 500 : 400,
-                color: m.real ? 'var(--color-ink)' : 'var(--color-ink-faint)',
-                whiteSpace: 'nowrap',
-                pointerEvents: 'none',
-              }}
-            >
-              {m.label}
-            </div>
-          );
-        })}
-
-        {/* row D: playhead arrow + italic "now" */}
-        <div
+        {/* row D: playhead arrow + italic "now" — slides smoothly */}
+        <motion.div
           className="absolute flex flex-col items-center"
+          animate={{ left: `${nowSpec.at * 100}%` }}
+          transition={{ duration: 0.32, ease: [0.4, 0, 0.2, 1] }}
           style={{
-            left: `${nowSpec.at * 100}%`,
             top: yD,
             height: ROW_D,
             transform: 'translateX(-50%)',
@@ -394,32 +323,385 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
           >
             now
           </span>
-        </div>
+        </motion.div>
 
-        {/* row E: seam labels */}
+        {/* row E: seam labels (with hover tooltips) */}
         {SEAMS.map((seam) => (
-          <div
+          <SeamLabelArea
             key={seam.label}
-            className="absolute"
-            style={{
-              left: `${seam.at * 100}%`,
-              top: yE,
-              height: ROW_E,
-              transform: 'translateX(-50%)',
-              whiteSpace: 'nowrap',
-              fontFamily: 'var(--font-serif)',
-              fontStyle: 'italic',
-              fontSize: seamFontSize,
-              color: 'var(--color-ink-faint)',
-              letterSpacing: '-0.005em',
-              lineHeight: `${ROW_E}px`,
-            }}
-            aria-hidden
-          >
-            {seam.label}
-          </div>
+            label={seam.label}
+            at={seam.at}
+            top={yE}
+            height={ROW_E}
+            fontSize={seamFontSize}
+          />
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * One milestone unit: dot + label + click button + hover tooltip +
+ * click-pulse animation + active styling. Owned-state for hover and
+ * the 240ms pulse + 400ms ring.
+ */
+function MilestoneArea({
+  milestone,
+  cursor,
+  now,
+  trackY,
+  yC,
+  rowC,
+  compact,
+  milestoneFontSize,
+  date,
+  onScrub,
+}: {
+  milestone: MilestoneSpec;
+  cursor: LifecycleMilestone;
+  now: LifecycleMilestone;
+  trackY: number;
+  yC: number;
+  rowC: number;
+  compact: boolean;
+  milestoneFontSize: number;
+  date: string | null;
+  onScrub: () => void;
+}) {
+  const isCursor = milestone.key === cursor;
+  const isNow = milestone.key === now;
+  const [hovered, setHovered] = useState(false);
+  const [tooltipShown, setTooltipShown] = useState(false);
+  const [pulsing, setPulsing] = useState(false);
+  const [ringKey, setRingKey] = useState(0);
+  const hoverTimerRef = useRef<number | null>(null);
+  const pulseTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (hovered) {
+      hoverTimerRef.current = window.setTimeout(
+        () => setTooltipShown(true),
+        HOVER_DELAY_MS,
+      );
+    } else {
+      if (hoverTimerRef.current !== null) {
+        window.clearTimeout(hoverTimerRef.current);
+        hoverTimerRef.current = null;
+      }
+      setTooltipShown(false);
+    }
+    return () => {
+      if (hoverTimerRef.current !== null) {
+        window.clearTimeout(hoverTimerRef.current);
+      }
+    };
+  }, [hovered]);
+
+  useEffect(() => {
+    return () => {
+      if (pulseTimerRef.current !== null) {
+        window.clearTimeout(pulseTimerRef.current);
+      }
+    };
+  }, []);
+
+  function onClick() {
+    setPulsing(true);
+    setRingKey((k) => k + 1);
+    if (pulseTimerRef.current !== null) {
+      window.clearTimeout(pulseTimerRef.current);
+    }
+    pulseTimerRef.current = window.setTimeout(() => setPulsing(false), 240);
+    onScrub();
+  }
+
+  // Active milestone styling: filled coral dot when actively viewed
+  // (cursor OR now). Background ring + hairline border under the
+  // label for the cursor (the actively viewed state).
+  const dotBg = isNow
+    ? 'var(--color-accent)'
+    : isCursor
+      ? 'var(--color-accent)'
+      : hovered
+        ? 'var(--color-bg)'
+        : 'var(--color-surface)';
+  const dotBorder = isNow || isCursor
+    ? 'var(--color-accent)'
+    : hovered
+      ? 'var(--color-accent)'
+      : 'var(--color-rule-mid)';
+
+  const labelColor = isCursor || hovered
+    ? 'var(--color-accent)'
+    : milestone.real
+      ? 'var(--color-ink)'
+      : 'var(--color-ink-faint)';
+  const labelWeight = isCursor || hovered ? 500 : milestone.real ? 400 : 400;
+  const labelStyle: React.CSSProperties = hovered || isCursor
+    ? { fontStyle: 'italic' }
+    : {};
+
+  // Active ring around the cursor's label area + subtle elevation
+  const activeRing = isCursor;
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: `${milestone.at * 100}%`,
+        top: trackY - 12,
+        transform: 'translateX(-50%)',
+        height: yC + rowC - (trackY - 12),
+        width: 88,
+        marginLeft: -44,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        cursor: 'pointer',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* tooltip */}
+      <MilestoneTooltip
+        visible={tooltipShown}
+        milestone={milestone.key}
+        now={now}
+        date={date}
+      />
+
+      {/* clickable dot button */}
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={`Scrub to ${milestone.label}`}
+        aria-current={isCursor ? 'step' : undefined}
+        style={{
+          width: 24,
+          height: 24,
+          padding: 0,
+          background: 'transparent',
+          border: 0,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+        }}
+      >
+        <motion.span
+          animate={{ scale: pulsing ? [1, 1.25, 1] : hovered ? 1.15 : 1 }}
+          transition={
+            pulsing
+              ? { duration: 0.24, ease: [0.4, 0, 0.2, 1] }
+              : { duration: 0.2, ease: [0.4, 0, 0.2, 1] }
+          }
+          style={{
+            width: compact ? 8 : 9,
+            height: compact ? 8 : 9,
+            borderRadius: 999,
+            background: dotBg,
+            border: `0.5px solid ${dotBorder}`,
+            opacity: milestone.real || isCursor || isNow ? 1 : 0.7,
+            display: 'block',
+          }}
+        />
+
+        {/* expanding ring on click — keyed so each click re-mounts */}
+        <AnimatePresence>
+          <motion.span
+            key={ringKey}
+            initial={{ opacity: 0.6, width: 8, height: 8 }}
+            animate={{ opacity: 0, width: 24, height: 24 }}
+            transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              borderRadius: 999,
+              border: '1px solid var(--color-accent)',
+              pointerEvents: 'none',
+            }}
+            aria-hidden
+          />
+        </AnimatePresence>
+      </button>
+
+      {/* label area — wrapped so border-bottom can sit underneath */}
+      <div
+        style={{
+          marginTop: 1,
+          height: rowC,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+          padding: '0 6px',
+          borderRadius: 'var(--radius-button)',
+          border: activeRing
+            ? '0.5px solid var(--color-accent)'
+            : '0.5px solid transparent',
+          background: activeRing ? 'rgba(201, 99, 66, 0.04)' : 'transparent',
+          boxShadow: activeRing
+            ? '0 1px 2px rgba(31, 30, 29, 0.04)'
+            : 'none',
+          transition:
+            'border-color 200ms cubic-bezier(0.4,0,0.2,1), background 200ms cubic-bezier(0.4,0,0.2,1)',
+        }}
+      >
+        <span
+          style={{
+            fontFamily: 'var(--font-sans)',
+            fontSize: milestoneFontSize,
+            fontWeight: labelWeight,
+            color: labelColor,
+            whiteSpace: 'nowrap',
+            transition:
+              'color 200ms cubic-bezier(0.4,0,0.2,1), font-weight 200ms',
+            ...labelStyle,
+          }}
+        >
+          {milestone.label}
+        </span>
+        {/* hover hairline coral underline */}
+        <span
+          aria-hidden
+          style={{
+            position: 'absolute',
+            left: 6,
+            right: 6,
+            bottom: 1,
+            height: 0.5,
+            background:
+              hovered && !activeRing ? 'var(--color-accent)' : 'transparent',
+            transition: 'background 100ms ease-out',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PhaseLabelArea({
+  label,
+  left,
+  width,
+  top,
+  height,
+  fontSize,
+}: {
+  label: string;
+  left: string;
+  width: string;
+  top: number;
+  height: number;
+  fontSize: number;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [tooltipShown, setTooltipShown] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (hovered) {
+      timerRef.current = window.setTimeout(
+        () => setTooltipShown(true),
+        HOVER_DELAY_MS,
+      );
+    } else {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      setTooltipShown(false);
+    }
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
+  }, [hovered]);
+
+  return (
+    <div
+      className="absolute flex items-center justify-center"
+      style={{
+        left,
+        width,
+        top,
+        height,
+        fontFamily: 'var(--font-serif)',
+        fontStyle: 'italic',
+        fontSize,
+        color: hovered ? 'var(--color-ink-soft)' : 'var(--color-ink-mute)',
+        position: 'absolute',
+        cursor: 'help',
+        transition: 'color 200ms ease-out',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span style={{ position: 'relative' }}>
+        {label}
+        <PhaseLabelTooltip visible={tooltipShown} label={label} />
+      </span>
+    </div>
+  );
+}
+
+function SeamLabelArea({
+  label,
+  at,
+  top,
+  height,
+  fontSize,
+}: {
+  label: string;
+  at: number;
+  top: number;
+  height: number;
+  fontSize: number;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [tooltipShown, setTooltipShown] = useState(false);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (hovered) {
+      timerRef.current = window.setTimeout(
+        () => setTooltipShown(true),
+        HOVER_DELAY_MS,
+      );
+    } else {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      setTooltipShown(false);
+    }
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    };
+  }, [hovered]);
+
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: `${at * 100}%`,
+        top,
+        height,
+        transform: 'translateX(-50%)',
+        whiteSpace: 'nowrap',
+        fontFamily: 'var(--font-serif)',
+        fontStyle: 'italic',
+        fontSize,
+        color: hovered ? 'var(--color-ink-mute)' : 'var(--color-ink-faint)',
+        letterSpacing: '-0.005em',
+        lineHeight: `${height}px`,
+        cursor: 'help',
+        transition: 'color 200ms ease-out',
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <span style={{ position: 'relative' }}>
+        {label}
+        <SeamLabelTooltip visible={tooltipShown} label={label} />
+      </span>
     </div>
   );
 }

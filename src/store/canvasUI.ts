@@ -50,6 +50,10 @@ type CanvasUIState = {
    *  mounted in the DOM. The chapter nav uses this to disable buttons
    *  whose target isn't in the current canvas. */
   presentChapters: Partial<Record<ChapterId, number>>;
+  /** True until the user has seen and dismissed the lifecycle-ribbon
+   *  first-encounter cue. Persisted across sessions; clearing
+   *  localStorage resets it. */
+  firstRibbonEncounter: boolean;
 
   setManualOverride: (chapter: ChapterId, expanded: boolean | undefined) => void;
   setActiveChapter: (chapter: ChapterId | null) => void;
@@ -60,6 +64,7 @@ type CanvasUIState = {
   popInspector: () => void;
   clearInspectorHistory: () => void;
   registerChapterPresence: (chapter: ChapterId, mounted: boolean) => void;
+  dismissRibbonFirstEncounter: () => void;
 };
 
 function safeStorage(): Storage {
@@ -107,6 +112,7 @@ export const useCanvasUI = create<CanvasUIState>()(
       quickJumpOpen: false,
       inspectorHistory: [],
       presentChapters: {},
+      firstRibbonEncounter: true,
       setManualOverride: (chapter, expanded) =>
         set((s) => {
           const next = { ...s.manualOverrides };
@@ -141,12 +147,14 @@ export const useCanvasUI = create<CanvasUIState>()(
             presentChapters: { ...s.presentChapters, [chapter]: next },
           };
         }),
+      dismissRibbonFirstEncounter: () => set({ firstRibbonEncounter: false }),
     }),
     {
       name: 'ranberri.canvas-ui.v0',
       storage: createJSONStorage(() => safeStorage()),
       partialize: (s) => ({
         manualOverrides: s.manualOverrides,
+        firstRibbonEncounter: s.firstRibbonEncounter,
       }),
     },
   ),
