@@ -18,6 +18,7 @@ import type { AuditEvent } from '@/lib/audit';
 export function ChapterNav() {
   const state = useRanBerri();
   const activeChapter = useCanvasUI((s) => s.activeChapter);
+  const presentChapters = useCanvasUI((s) => s.presentChapters);
   const chapters = deriveChapters(state);
   const submission = state.submission;
 
@@ -76,8 +77,18 @@ export function ChapterNav() {
           historicalCutoffMs !== null &&
           firstAt !== null &&
           new Date(firstAt).getTime() > historicalCutoffMs;
-        const effectivelyAvailable = c.available && !postdates;
-        const color = !effectivelyAvailable
+        const inDom = (presentChapters[c.id] ?? 0) > 0;
+        const lifecycleAvailable = c.available && !postdates;
+        const clickable = lifecycleAvailable && inDom;
+        const offCanvas = lifecycleAvailable && !inDom;
+        const title = !c.available
+          ? `${c.label} — not yet reached`
+          : postdates
+            ? `${c.label} — postdates the historical cursor`
+            : offCanvas
+              ? `${c.label} — not in the current canvas`
+              : c.label;
+        const color = !clickable
           ? 'var(--color-ink-faint)'
           : isActive
             ? 'var(--color-accent)'
@@ -102,7 +113,8 @@ export function ChapterNav() {
             <button
               type="button"
               onClick={() => scrollToChapter(c.id)}
-              disabled={!effectivelyAvailable}
+              disabled={!clickable}
+              title={title}
               className="serif"
               aria-current={isActive ? 'true' : undefined}
               style={{
@@ -112,10 +124,13 @@ export function ChapterNav() {
                 background: 'transparent',
                 border: 0,
                 padding: '2px 0',
-                cursor: effectivelyAvailable ? 'pointer' : 'default',
+                cursor: clickable ? 'pointer' : 'default',
                 letterSpacing: '0.005em',
                 transition: 'color 200ms cubic-bezier(0.4,0,0.2,1)',
-                opacity: postdates ? 0.55 : 1,
+                opacity: postdates || offCanvas ? 0.55 : 1,
+                textDecoration: offCanvas ? 'line-through' : 'none',
+                textDecorationColor: 'var(--color-rule-mid)',
+                textDecorationThickness: '0.5px',
               }}
             >
               {c.label}
@@ -168,14 +183,23 @@ function nearestScrollable(start: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Hook used by SectionCollapse to register a section header with
- * the IntersectionObserver-based active-chapter detector.
+ * Hook used by SectionCollapse / ChapterAnchor to register a section
+ * header with both the IntersectionObserver-based active-chapter
+ * detector AND the chapter-presence registry (so the nav can disable
+ * buttons whose target isn't currently mounted).
  */
 export function useObserveChapter(
   chapter: ChapterId,
   ref: React.RefObject<HTMLElement | null>,
 ) {
   const setActiveChapter = useCanvasUI((s) => s.setActiveChapter);
+  const registerChapterPresence = useCanvasUI((s) => s.registerChapterPresence);
+
+  useEffect(() => {
+    registerChapterPresence(chapter, true);
+    return () => registerChapterPresence(chapter, false);
+  }, [chapter, registerChapterPresence]);
+
   useEffect(() => {
     const node = ref.current;
     if (!node || typeof IntersectionObserver === 'undefined') return;

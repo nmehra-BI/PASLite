@@ -46,6 +46,10 @@ type CanvasUIState = {
     title: string;
     payload?: unknown;
   }>;
+  /** Reference-counted record of which chapter anchors are currently
+   *  mounted in the DOM. The chapter nav uses this to disable buttons
+   *  whose target isn't in the current canvas. */
+  presentChapters: Partial<Record<ChapterId, number>>;
 
   setManualOverride: (chapter: ChapterId, expanded: boolean | undefined) => void;
   setActiveChapter: (chapter: ChapterId | null) => void;
@@ -55,6 +59,7 @@ type CanvasUIState = {
   pushInspector: (entry: { kind: string; title: string; payload?: unknown }) => void;
   popInspector: () => void;
   clearInspectorHistory: () => void;
+  registerChapterPresence: (chapter: ChapterId, mounted: boolean) => void;
 };
 
 function safeStorage(): Storage {
@@ -101,6 +106,7 @@ export const useCanvasUI = create<CanvasUIState>()(
       activeChapter: null,
       quickJumpOpen: false,
       inspectorHistory: [],
+      presentChapters: {},
       setManualOverride: (chapter, expanded) =>
         set((s) => {
           const next = { ...s.manualOverrides };
@@ -127,6 +133,14 @@ export const useCanvasUI = create<CanvasUIState>()(
       popInspector: () =>
         set((s) => ({ inspectorHistory: s.inspectorHistory.slice(0, -1) })),
       clearInspectorHistory: () => set({ inspectorHistory: [] }),
+      registerChapterPresence: (chapter, mounted) =>
+        set((s) => {
+          const cur = s.presentChapters[chapter] ?? 0;
+          const next = mounted ? cur + 1 : Math.max(0, cur - 1);
+          return {
+            presentChapters: { ...s.presentChapters, [chapter]: next },
+          };
+        }),
     }),
     {
       name: 'ranberri.canvas-ui.v0',
