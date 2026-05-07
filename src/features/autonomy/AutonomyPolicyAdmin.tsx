@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, FileText, Sliders } from 'lucide-react';
 import { useRanBerri } from '@/store';
+import { useConfig } from '@/config';
 import { useAutonomy } from '@/store/autonomy';
 import { Pill } from '@/components';
 import type { DecisionClassConfig, DecisionClassId } from '@/lib/autonomy/types';
@@ -213,6 +214,7 @@ export function AutonomyPolicyAdmin() {
 }
 
 function Masthead() {
+  const config = useConfig();
   return (
     <div
       className="hairline-b flex items-center justify-between"
@@ -231,7 +233,7 @@ function Masthead() {
           color: 'var(--color-ink)',
         }}
       >
-        RanBerri
+        {config.branding.productName}
       </span>
       <span
         className="mono"

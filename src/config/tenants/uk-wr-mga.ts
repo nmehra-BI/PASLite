@@ -83,82 +83,104 @@ export const ukWrMgaConfig: TenantConfig = {
   },
 
   appetite: {
-    // Source: src/lib/appetite (rule definitions + module 4 triage).
-    // Refactor step 2 will replace appetite usages to read from here.
+    // Source of truth: src/lib/appetite/checkAppetite.ts.
+    // Values here MUST stay aligned with that file's constants;
+    // any drift means tenant config has diverged from deployed
+    // behaviour. checkAppetite reads its bands from the constants
+    // exported below.
     rules: [
       {
         id: 'APP-001',
-        label: 'In-appetite line of business',
-        description: 'UK Waste & Recycling at Tier-2 cap.',
+        label: 'Line of business',
+        description: 'UK waste & recycling.',
         category: 'inclusion',
         logic: { kind: 'lob-membership', params: { allowed: ['UK-W&R'] } },
         citation: 'Capacity authority schedule §2.1',
       },
       {
         id: 'APP-002',
-        label: 'Turnover in band',
-        description: 'Insureds with annual turnover £1m–£50m.',
+        label: 'Jurisdiction',
+        description: 'GB.',
         category: 'conditional',
         logic: {
-          kind: 'turnover-band',
-          params: { minGBP: 1_000_000, maxGBP: 50_000_000 },
+          kind: 'geographic-scope',
+          params: { allowed: ['GB'] },
         },
         citation: 'Capacity authority schedule §2.2',
       },
       {
         id: 'APP-003',
-        label: 'Material class allowed',
-        description:
-          'Mixed dry recyclables, paper & card, plastics. Hazardous waste excluded; WEEE conditional.',
+        label: 'Turnover band',
+        description: 'Insureds with annual turnover £1m–£25m.',
         category: 'conditional',
         logic: {
-          kind: 'material-class',
-          params: {
-            allowed: ['dry-recyclables', 'paper-card', 'plastics', 'metals'],
-            conditional: ['weee'],
-            excluded: ['hazardous', 'asbestos', 'medical-waste'],
-          },
+          kind: 'turnover-band',
+          params: { minGBP: 1_000_000, maxGBP: 25_000_000 },
         },
         citation: 'Capacity authority schedule §2.3',
       },
       {
         id: 'APP-004',
-        label: 'Geographic scope',
-        description: 'UK only. Republic of Ireland on referral.',
+        label: 'Site count band',
+        description: '1–5 sites. >5 by referral.',
         category: 'conditional',
         logic: {
-          kind: 'geographic-scope',
-          params: { allowed: ['UK'], referralOnly: ['IE'] },
+          kind: 'site-count',
+          params: { min: 1, max: 5, referralAbove: 5 },
         },
         citation: 'Capacity authority schedule §2.4',
       },
       {
         id: 'APP-005',
-        label: 'Site count',
-        description: 'Up to 10 sites; >10 by referral.',
-        category: 'conditional',
+        label: 'Excluded material classes',
+        description:
+          'Battery, ELV, asbestos, hazardous waste, clinical waste, WEEE class 5+ excluded.',
+        category: 'exclusion',
         logic: {
-          kind: 'site-count',
-          params: { max: 10, referralAbove: 10 },
+          kind: 'material-class',
+          params: {
+            excluded: [
+              'battery',
+              'elv',
+              'asbestos',
+              'hazardous waste',
+              'clinical waste',
+              'weee class 5',
+              'weee 5+',
+            ],
+          },
         },
         citation: 'Capacity authority schedule §2.5',
       },
+      {
+        id: 'APP-006',
+        label: 'Companies House status',
+        description: 'Insured must be active on Companies House.',
+        category: 'conditional',
+        logic: {
+          kind: 'industry-exclusion',
+          params: { mustBeActive: true },
+        },
+        citation: 'Capacity authority schedule §2.6',
+      },
     ],
-    geographicScope: ['UK'],
-    materialClassesAllowed: [
-      'dry-recyclables',
-      'paper-card',
-      'plastics',
-      'metals',
-      'mixed-recyclables',
+    geographicScope: ['GB'],
+    materialClassesAllowed: [],
+    materialClassesExcluded: [
+      'battery',
+      'elv',
+      'asbestos',
+      'hazardous waste',
+      'clinical waste',
+      'weee class 5',
+      'weee 5+',
     ],
-    materialClassesExcluded: ['hazardous', 'asbestos', 'medical-waste'],
-    industriesExcluded: ['heavy-demolition', 'nuclear-waste'],
+    industriesExcluded: [],
     conditions: {
       minTurnover: 1_000_000,
-      maxTurnover: 50_000_000,
+      maxTurnover: 25_000_000,
       minSites: 1,
-      maxSites: 10,
+      maxSites: 5,
     },
   },
 
@@ -422,55 +444,62 @@ export const ukWrMgaConfig: TenantConfig = {
   },
 
   cancellation: {
-    // Source: src/lib/cancellation (5 reason types + refund mechanics).
+    // Source of truth: src/lib/cancellation/types.ts. IDs match the
+    // canonical CancellationReason union; refund basis + clawback
+    // rules round-trip exactly. The numerical constants below
+    // (shortRatePenalty etc.) are read by computeRefund.
     reasons: [
       {
-        id: 'INSURED-SWITCH',
-        label: 'Insured switching carrier',
+        id: 'insured-non-renewal',
+        label: 'insured non-renewal',
         category: 'insured-initiated',
         refundBasis: 'short-rate',
-        shortRatePenalty: 0.075,
         commissionTreatment: 'partial',
         wordingClauseId: 'CL-14',
       },
       {
-        id: 'INSURED-CEASED-TRADING',
-        label: 'Insured ceased trading',
+        id: 'insured-cancel-other',
+        label: 'insured request',
         category: 'insured-initiated',
-        refundBasis: 'pro-rata',
+        refundBasis: 'short-rate',
         commissionTreatment: 'partial',
         wordingClauseId: 'CL-14',
       },
       {
-        id: 'MGA-WITHDRAWAL',
-        label: 'MGA withdrawing capacity from segment',
-        category: 'mga-initiated',
-        refundBasis: 'pro-rata',
-        commissionTreatment: 'preserved',
-        wordingClauseId: 'CL-15',
+        id: 'non-payment',
+        label: 'non-payment of premium',
+        category: 'insured-initiated',
+        refundBasis: 'short-rate',
+        commissionTreatment: 'full',
+        wordingClauseId: 'CL-14',
       },
       {
-        id: 'SUBJECTIVITY-BREACH',
-        label: 'Subjectivity breach (e.g. permit lapse)',
-        category: 'subjectivity-breach',
+        id: 'mga-cancel-underwriting',
+        label: 'underwriter cause',
+        category: 'underwriting-decision',
         refundBasis: 'pro-rata',
         commissionTreatment: 'partial',
         wordingClauseId: 'CL-15',
       },
       {
-        id: 'SANCTIONS-HIT',
-        label: 'Sanctions hit detected post-bind',
-        category: 'sanctions-hit',
-        refundBasis: 'full-retained',
+        id: 'mga-cause-misrep',
+        label: 'material misrepresentation — void ab initio',
+        category: 'mga-initiated',
+        refundBasis: 'void-ab-initio',
         commissionTreatment: 'full',
         wordingClauseId: 'CL-15',
       },
     ],
+    shortRatePenalty: 0.075,
+    brokerageRate: 0.215,
+    partialClawbackFactor: 0.554,
   },
 
   competitors: {
     // Source: src/lib/fixtures/competitiveIntel.ts +
     // src/features/recommendation + module 11's defence pricing.
+    // Names match the fixture's canonical entries — the fixture
+    // reads from this list so renaming a competitor here propagates.
     competitors: [
       {
         id: 'COMP-REGENTMGA',
@@ -478,34 +507,36 @@ export const ukWrMgaConfig: TenantConfig = {
         profile: 'sharp',
         typicalDiscountRange: { min: -0.15, max: -0.08 },
         patternNotes:
-          'Aggressive on Tier-2 W&R; willing to defend at thin margin to retain book share. Defence floor observed around £50,500 for sub-£15M turnover risks.',
+          'Consistently undercuts on Tier-2 W&R; LR pattern unknown but suspected high. Defence floor observed around £50,500 for sub-£15M turnover risks.',
         relevantLOBs: ['UK-W&R'],
       },
       {
-        id: 'COMP-NORTHWAY',
-        name: 'Northway Underwriting',
+        id: 'COMP-CAULFIELD',
+        name: 'Caulfield Underwriting',
         profile: 'standard',
-        typicalDiscountRange: { min: -0.05, max: 0.02 },
+        typicalDiscountRange: { min: -0.02, max: 0.01 },
         patternNotes:
-          'Steady on Tier-2 W&R; quotes near technical without discount, loses on price-led broker shops.',
+          'Broker-relationship driven; pricing rarely the deciding factor.',
         relevantLOBs: ['UK-W&R'],
       },
       {
-        id: 'COMP-LANDMARK',
-        name: 'Landmark Specialty',
+        id: 'COMP-BOLTREE',
+        name: 'Boltree Specialty',
         profile: 'conservative',
         typicalDiscountRange: { min: 0, max: 0.08 },
         patternNotes:
-          'Will quote above technical when capacity headroom is constrained; not currently a primary threat in W&R.',
+          'Rarely encountered in this segment; trades on broader sub-limits.',
         relevantLOBs: ['UK-W&R'],
       },
     ],
   },
 
   enrichmentSources: [
-    // Source: src/lib/fixtures/enrichmentSources.ts (module 3).
+    // Source: src/lib/fixtures/enrichmentSources.ts (module 3). IDs
+    // match the fixture's local enum so the engine can index by id;
+    // labels and citation formats round-trip into bordereau citations.
     {
-      id: 'COMPANIES-HOUSE',
+      id: 'companies-house',
       label: 'Companies House',
       type: 'corporate-registry',
       geographicScope: ['UK'],
@@ -513,44 +544,47 @@ export const ukWrMgaConfig: TenantConfig = {
       citationFormat: 'CH-{companyNumber}',
     },
     {
-      id: 'EA-REGISTRY',
-      label: 'Environmental Agency permit registry',
+      id: 'ea-permit-registry',
+      label: 'EA Permit Registry',
       type: 'permit-registry',
       geographicScope: ['UK'],
       defaultConfidence: 0.92,
       citationFormat: 'EAWML-{permitNumber}',
     },
     {
-      id: 'EXPERIAN',
-      label: 'Experian credit bureau',
-      type: 'credit-bureau',
+      id: 'experian-sanctions',
+      label: 'Experian Sanctions',
+      type: 'sanctions',
       geographicScope: ['UK'],
-      defaultConfidence: 0.88,
-      citationFormat: 'EXP-{reportRef}',
+      defaultConfidence: 0.99,
+      citationFormat: 'EXP-{listRef}',
     },
     {
-      id: 'INTERNAL-LOSS-INDEX',
-      label: 'Internal loss index',
+      id: 'internal-loss-index',
+      label: 'Internal Loss Index',
       type: 'internal-loss-index',
       geographicScope: ['UK'],
       defaultConfidence: 0.97,
       citationFormat: 'ILI-{recordRef}',
     },
-    {
-      id: 'HM-TREASURY-SANCTIONS',
-      label: 'HM Treasury sanctions list',
-      type: 'sanctions',
-      geographicScope: ['UK'],
-      defaultConfidence: 0.99,
-      citationFormat: 'HMT-{listRef}',
-    },
   ],
 
   autonomy: {
-    // Module 14's autonomy policy is the canonical shape for now.
-    // The config carries the seed; a future tenant ships its own.
-    policy: getSeedAutonomyPolicy(),
-    decisionClasses: Object.values(getSeedAutonomyPolicy().decisionClasses),
+    // Module 14's autonomy policy is the canonical shape. The seed
+    // function takes options for the metadata strings so this config
+    // injects its own capacity-provider + MGA-owner names without
+    // requiring autonomyPolicy.ts to import @/config (which would
+    // create a circular dependency).
+    policy: getSeedAutonomyPolicy({
+      capacityProvider: 'Syndicate 2358',
+      mgaOwner: 'RanBerri Operations',
+    }),
+    decisionClasses: Object.values(
+      getSeedAutonomyPolicy({
+        capacityProvider: 'Syndicate 2358',
+        mgaOwner: 'RanBerri Operations',
+      }).decisionClasses,
+    ),
     bordereauFormat: 'lloyds-csv',
   },
 

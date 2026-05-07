@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ArrowLeft, ArrowUpRight } from 'lucide-react';
 import { useAutonomy } from '@/store/autonomy';
+import { useConfig } from '@/config';
 import { useRanBerri } from '@/store';
 import { Pill } from '@/components';
 import type {
@@ -508,6 +509,7 @@ function EmptyState() {
 }
 
 function Masthead() {
+  const config = useConfig();
   return (
     <div
       className="hairline-b flex items-center justify-between"
@@ -526,7 +528,7 @@ function Masthead() {
           color: 'var(--color-ink)',
         }}
       >
-        RanBerri
+        {config.branding.productName}
       </span>
       <span
         className="mono"

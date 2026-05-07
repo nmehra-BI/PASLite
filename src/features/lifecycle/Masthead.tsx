@@ -1,4 +1,5 @@
 import { Sparkle } from 'lucide-react';
+import { useConfig } from '@/config';
 
 type Props = {
   folio?: string;
@@ -6,6 +7,7 @@ type Props = {
 };
 
 export function Masthead({ folio = 'MGA-PAS / folio 29481', build = '0.1.0' }: Props) {
+  const config = useConfig();
   return (
     <header
       className="hairline-b w-full"
@@ -28,7 +30,7 @@ export function Masthead({ folio = 'MGA-PAS / folio 29481', build = '0.1.0' }: P
               color: 'var(--color-ink)',
             }}
           >
-            RanBerri
+            {config.branding.productName}
           </span>
           <span
             className="ml-3 hidden sm:inline"

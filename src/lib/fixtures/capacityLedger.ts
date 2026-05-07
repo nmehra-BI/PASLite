@@ -1,10 +1,14 @@
 /**
- * Mock capacity ledger for Syndicate 2358 / UK W&R / Tier-2.
+ * Mock capacity ledger for the active tenant's capacity provider.
  *
  * Real production reads this from a backend; for the demo it's a
  * frozen snapshot. The triage capacity check projects this submission's
- * estimated consumption against the headroom.
+ * estimated consumption against the headroom. The syndicate name +
+ * segment label + cap are derived from the active tenant config so
+ * the ledger automatically tracks tenant changes.
  */
+
+import { getActiveConfig } from '@/config';
 
 export type CapacityLedger = {
   syndicate: string;
@@ -18,10 +22,12 @@ export type CapacityLedger = {
 };
 
 export function getCapacityLedger(): CapacityLedger {
+  const config = getActiveConfig();
+  const lob = config.metadata.lineOfBusiness;
   return {
-    syndicate: 'Syndicate 2358',
-    segment: 'UK W&R · Tier-2',
-    annualAggregateCap: 50_000_000,
+    syndicate: config.metadata.capacityProvider.name,
+    segment: `${lob.label} · ${lob.tier}`,
+    annualAggregateCap: config.capacity.totalCapacity,
     consumedYTD: 36_420_000,
     openReferrals: 1_200_000,
     refreshedAt: new Date().toISOString(),

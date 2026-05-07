@@ -268,14 +268,23 @@ export type CancellationReason = {
   id: string;
   label: string;
   category: CancellationReasonCategory;
-  refundBasis: 'pro-rata' | 'short-rate' | 'full-retained';
-  shortRatePenalty?: number;
-  commissionTreatment: 'partial' | 'full' | 'preserved';
+  refundBasis: 'pro-rata' | 'short-rate' | 'void-ab-initio' | 'full-retained';
+  /** 'partial' | 'full' | 'none' — the canonical clawback kinds the
+   *  refund engine knows how to apply. 'preserved' kept as an alias
+   *  for tenants that prefer that wording in their wording library. */
+  commissionTreatment: 'partial' | 'full' | 'none' | 'preserved';
   wordingClauseId: string;
 };
 
 export type CancellationConfig = {
   reasons: CancellationReason[];
+  /** Short-rate penalty applied to short-rate cancellations (per
+   *  cl.14 in the wording library). 0.075 = 7.5%. */
+  shortRatePenalty: number;
+  /** Brokerage rate baked into commission/clawback computation. */
+  brokerageRate: number;
+  /** Partial-clawback factor for voluntary short-rate cancellations. */
+  partialClawbackFactor: number;
 };
 
 // ─── Competitor intel ──────────────────────────────────────────────

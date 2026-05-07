@@ -128,7 +128,7 @@ export function QuoteSlip() {
             color: 'var(--color-ink-faint)',
           }}
         >
-          RanBerri
+          {config.branding.productName}
         </span>
       </div>
 

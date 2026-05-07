@@ -1,20 +1,33 @@
 /**
  * Module 14 — seed autonomy policy.
  *
- * The canonical policy as approved by Syndicate 2358 + RanBerri Operations.
- * Values match the demo spec: TRIAGE-AUTO-PASS + TRIAGE-AUTO-DECLINE
- * enabled by default; the more consequential CONFLICT-AUTO-RESOLVE,
- * BIND-AUTO-COMMIT, NTU-AUTO-CAPTURE disabled and require explicit
- * underwriter + capacity-provider sign-off to enable.
+ * Defines the canonical policy structure: TRIAGE-AUTO-PASS +
+ * TRIAGE-AUTO-DECLINE enabled by default; the more consequential
+ * CONFLICT-AUTO-RESOLVE, BIND-AUTO-COMMIT, NTU-AUTO-CAPTURE disabled
+ * and require explicit underwriter + capacity-provider sign-off.
+ *
+ * The `approvedBy` strings (capacity provider, MGA owner) are tenant
+ * metadata. They default to the W&R values for backward compatibility
+ * but can be overridden by passing options to getSeedAutonomyPolicy()
+ * — the W&R tenant config calls this with its own metadata so the
+ * policy round-trips through config without a circular import.
  */
 
 import type { AutonomyPolicy } from '@/lib/autonomy/types';
 
+export type SeedAutonomyPolicyOptions = {
+  capacityProvider?: string;
+  mgaOwner?: string;
+};
+
+const DEFAULT_CAPACITY_PROVIDER = 'Syndicate 2358';
+const DEFAULT_MGA_OWNER = 'RanBerri Operations';
+
 export const SEED_AUTONOMY_POLICY: AutonomyPolicy = {
   version: 'v1.0 · 2026-05-09',
   approvedBy: {
-    capacityProvider: 'Syndicate 2358',
-    mgaOwner: 'RanBerri Operations',
+    capacityProvider: DEFAULT_CAPACITY_PROVIDER,
+    mgaOwner: DEFAULT_MGA_OWNER,
     effectiveDate: '2026-05-09T00:00:00+01:00',
     expiresAt: '2027-05-09T00:00:00+01:00',
   },
@@ -123,6 +136,11 @@ export const SEED_AUTONOMY_POLICY: AutonomyPolicy = {
   },
 };
 
-export function getSeedAutonomyPolicy(): AutonomyPolicy {
-  return JSON.parse(JSON.stringify(SEED_AUTONOMY_POLICY)) as AutonomyPolicy;
+export function getSeedAutonomyPolicy(
+  opts?: SeedAutonomyPolicyOptions,
+): AutonomyPolicy {
+  const cloned = JSON.parse(JSON.stringify(SEED_AUTONOMY_POLICY)) as AutonomyPolicy;
+  if (opts?.capacityProvider) cloned.approvedBy.capacityProvider = opts.capacityProvider;
+  if (opts?.mgaOwner) cloned.approvedBy.mgaOwner = opts.mgaOwner;
+  return cloned;
 }

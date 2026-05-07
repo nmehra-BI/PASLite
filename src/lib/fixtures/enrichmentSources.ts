@@ -4,7 +4,14 @@
  * Each source returns a typed payload after a realistic latency. The
  * Companies House FY24-vs-FY23 mismatch is the deliberate cross-source
  * conflict the resolution UI surfaces.
+ *
+ * Source labels are pulled from the active tenant config so a future
+ * tenant's enrichment lineup is config-driven; the per-source query
+ * functions and payload shapes stay in this fixture (mocks, not
+ * configuration).
  */
+
+import { getActiveConfig } from '@/config';
 
 export type EnrichmentSourceId =
   | 'companies-house'
@@ -22,32 +29,42 @@ export type SourceMeta = {
   latencyMs: number;
 };
 
-export const ENRICHMENT_SOURCES: SourceMeta[] = [
-  {
-    id: 'internal-loss-index',
-    name: 'Internal Loss Index',
-    service: 'internal',
-    latencyMs: 200,
-  },
-  {
-    id: 'experian-sanctions',
-    name: 'Experian Sanctions',
-    service: 'experian',
-    latencyMs: 400,
-  },
-  {
-    id: 'companies-house',
-    name: 'Companies House',
-    service: 'companies-house',
-    latencyMs: 800,
-  },
-  {
-    id: 'ea-permit-registry',
-    name: 'EA Permit Registry',
-    service: 'permit-registry',
-    latencyMs: 1100,
-  },
-];
+const LATENCIES: Record<EnrichmentSourceId, number> = {
+  'internal-loss-index': 200,
+  'experian-sanctions': 400,
+  'companies-house': 800,
+  'ea-permit-registry': 1100,
+};
+
+const SERVICE_LABELS: Record<EnrichmentSourceId, string> = {
+  'internal-loss-index': 'internal',
+  'experian-sanctions': 'experian',
+  'companies-house': 'companies-house',
+  'ea-permit-registry': 'permit-registry',
+};
+
+/** Build the source list from config labels + fixture-local latencies.
+ *  Order matches LATENCIES ascending so cinematic timing is preserved. */
+function buildSources(): SourceMeta[] {
+  const config = getActiveConfig();
+  const order: EnrichmentSourceId[] = [
+    'internal-loss-index',
+    'experian-sanctions',
+    'companies-house',
+    'ea-permit-registry',
+  ];
+  return order.map((id) => {
+    const cfg = config.enrichmentSources.find((s) => s.id === id);
+    return {
+      id,
+      name: cfg?.label ?? id,
+      service: SERVICE_LABELS[id],
+      latencyMs: LATENCIES[id],
+    };
+  });
+}
+
+export const ENRICHMENT_SOURCES: SourceMeta[] = buildSources();
 
 // ---------- payloads ----------
 

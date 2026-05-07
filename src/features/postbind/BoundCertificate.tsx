@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { Sparkle, X } from 'lucide-react';
+import { useConfig } from '@/config';
 import { getLiveBindCertificate } from '@/lib/bind';
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
@@ -27,6 +28,7 @@ const PRECISE_TIME_FMT = new Intl.DateTimeFormat('en-GB', {
  */
 export function BoundCertificate({ onClose }: { onClose: () => void }) {
   const cert = getLiveBindCertificate();
+  const config = useConfig();
   if (!cert) return null;
 
   const inception = cert.inceptionDate
@@ -109,7 +111,7 @@ export function BoundCertificate({ onClose }: { onClose: () => void }) {
               color: 'var(--color-ink-faint)',
             }}
           >
-            RanBerri
+            {config.branding.productName}
           </span>
         </div>
 

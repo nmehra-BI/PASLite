@@ -24,12 +24,21 @@ describe('tenant config — W&R', () => {
     ]);
   });
 
-  it('contains the canonical 5 cancellation reasons', () => {
+  it('contains the canonical 5 cancellation reasons aligned with code', () => {
     const cfg = loadConfig();
     expect(cfg.cancellation.reasons.length).toBe(5);
     const ids = cfg.cancellation.reasons.map((r) => r.id);
-    expect(ids).toContain('INSURED-SWITCH');
-    expect(ids).toContain('SANCTIONS-HIT');
+    // IDs must match src/lib/cancellation/types.ts CancellationReason.
+    expect(ids).toEqual([
+      'insured-non-renewal',
+      'insured-cancel-other',
+      'non-payment',
+      'mga-cancel-underwriting',
+      'mga-cause-misrep',
+    ]);
+    expect(cfg.cancellation.shortRatePenalty).toBe(0.075);
+    expect(cfg.cancellation.brokerageRate).toBe(0.215);
+    expect(cfg.cancellation.partialClawbackFactor).toBe(0.554);
   });
 
   it('is a singleton — loadConfig returns the same instance', () => {

@@ -1,5 +1,6 @@
 import { ArrowLeft, Sparkle } from 'lucide-react';
 import { useRanBerri } from '@/store';
+import { useConfig } from '@/config';
 import { Pill } from '@/components';
 import { AuditLogTrigger } from '@/features/audit';
 
@@ -9,6 +10,7 @@ import { AuditLogTrigger } from '@/features/audit';
  */
 export function TopBar() {
   const submission = useRanBerri((s) => s.submission);
+  const config = useConfig();
   const folio = submission?.folio ?? 'MGA-PAS · folio 29481';
   const insured = submission ? 'Greenline Recycling Ltd' : null;
 
@@ -69,7 +71,7 @@ export function TopBar() {
               color: 'var(--color-ink)',
             }}
           >
-            RanBerri
+            {config.branding.productName}
           </span>
         </div>
         <Divider />

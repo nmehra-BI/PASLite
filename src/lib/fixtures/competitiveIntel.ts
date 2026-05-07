@@ -1,9 +1,15 @@
 /**
- * Hand-curated competitor profiles. In production these would be
- * derived from the losses/binders databases at query time; for the
- * MVP they're a small static set so the recommendation engine has
- * named competitors with realistic pricing behaviour to cite.
+ * Competitor profiles. Names + pricing patterns + notes flow from
+ * the active tenant config (see `competitors.competitors`); the
+ * loss/binder counts are local to the fixture (cross-MGA binder
+ * visibility is a separate concern).
+ *
+ * In production the per-competitor stats would be derived from the
+ * losses/binders databases at query time; for the MVP they're a
+ * small static set keyed by competitor id.
  */
+
+import { getActiveConfig } from '@/config';
 
 export type CompetitorProfile = {
   name: string;
@@ -18,33 +24,33 @@ export type CompetitorProfile = {
   notes: string;
 };
 
+const STATS_BY_ID: Record<string, { losses: number; binders: number }> = {
+  'COMP-REGENTMGA': { losses: 12, binders: 0 },
+  'COMP-CAULFIELD': { losses: 8, binders: 0 },
+  'COMP-BOLTREE': { losses: 4, binders: 0 },
+};
+
+const PROFILE_LABEL: Record<string, CompetitorProfile['estimatedAggressiveness']> = {
+  sharp: 'sharp',
+  aggressive: 'sharp',
+  standard: 'disciplined',
+  conservative: 'unknown',
+};
+
 export function getCompetitiveIntel(): CompetitorProfile[] {
-  return [
-    {
-      name: 'RegentMGA',
-      estimatedAggressiveness: 'sharp',
-      typicalDiscount: { min: -0.15, max: -0.08 },
-      losses: 12,
-      binders: 0,
-      notes:
-        'Consistently undercuts on Tier-2 W&R; LR pattern unknown but suspected high.',
-    },
-    {
-      name: 'Caulfield Underwriting',
-      estimatedAggressiveness: 'disciplined',
-      typicalDiscount: { min: -0.02, max: 0.01 },
-      losses: 8,
-      binders: 0,
-      notes:
-        'Broker-relationship driven; pricing rarely the deciding factor.',
-    },
-    {
-      name: 'Boltree Specialty',
-      estimatedAggressiveness: 'unknown',
-      typicalDiscount: null,
-      losses: 4,
-      binders: 0,
-      notes: 'Rarely encountered in this segment; trades on broader sub-limits.',
-    },
-  ];
+  const config = getActiveConfig();
+  return config.competitors.competitors.map((c) => {
+    const stats = STATS_BY_ID[c.id] ?? { losses: 0, binders: 0 };
+    return {
+      name: c.name,
+      estimatedAggressiveness: PROFILE_LABEL[c.profile] ?? 'unknown',
+      typicalDiscount:
+        c.profile === 'conservative'
+          ? null
+          : { min: c.typicalDiscountRange.min, max: c.typicalDiscountRange.max },
+      losses: stats.losses,
+      binders: stats.binders,
+      notes: c.patternNotes,
+    };
+  });
 }

@@ -203,12 +203,19 @@ const cancellationConfigSchema = z.object({
         'subjectivity-breach',
         'sanctions-hit',
       ]),
-      refundBasis: z.enum(['pro-rata', 'short-rate', 'full-retained']),
-      shortRatePenalty: z.number().optional(),
-      commissionTreatment: z.enum(['partial', 'full', 'preserved']),
+      refundBasis: z.enum([
+        'pro-rata',
+        'short-rate',
+        'void-ab-initio',
+        'full-retained',
+      ]),
+      commissionTreatment: z.enum(['partial', 'full', 'none', 'preserved']),
       wordingClauseId: z.string().min(1),
     }),
   ),
+  shortRatePenalty: z.number().min(0).max(1),
+  brokerageRate: z.number().min(0).max(1),
+  partialClawbackFactor: z.number().min(0).max(1),
 });
 
 const competitorIntelSchema = z.object({

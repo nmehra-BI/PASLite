@@ -3,24 +3,27 @@
  *
  * Refund formulas:
  *   pro-rata:        refund = annual × daysRem / daysInTerm
- *   short-rate:      refund = pro_rata × (1 - SHORT_RATE_PENALTY)
+ *   short-rate:      refund = pro_rata × (1 - shortRatePenalty)
  *   void-ab-initio:  refund = 0
  *
- * Clawback formulas (against fullBrokerage = annual × SLIP_BROKERAGE_RATE):
- *   partial:  fullBrokerage × PARTIAL_CLAWBACK_FACTOR
+ * Clawback formulas (against fullBrokerage = annual × brokerageRate):
+ *   partial:  fullBrokerage × partialClawbackFactor
  *   full:     fullBrokerage
  *   none:     0
  *
  * Bordereau net movement = -refund × SYNDICATE_LINE (the syndicate's
  * share of the refund leaving the book — negative because it's an
  * outflow).
+ *
+ * The numeric constants (penalty, brokerage rate, partial clawback
+ * factor) are read from the active tenant config; the formulas
+ * themselves stay in code because they express insurance accounting
+ * principles common to any tenant.
  */
 
 import { computeSha } from '@/lib/bind';
+import { getActiveConfig } from '@/config';
 import {
-  PARTIAL_CLAWBACK_FACTOR,
-  SHORT_RATE_PENALTY,
-  SLIP_BROKERAGE_RATE,
   SYNDICATE_LINE,
   type CancellationCalc,
   type CancellationReason,
@@ -41,6 +44,7 @@ export type ComputeRefundInputs = {
 
 export function computeRefundAndClawback(input: ComputeRefundInputs): CancellationCalc {
   const { annualPremium, basis, reason } = input;
+  const cfg = getActiveConfig().cancellation;
   const inception = new Date(input.policyInception).getTime();
   const expiry = new Date(input.policyExpiry).getTime();
   const effective = new Date(input.cancellationEffective).getTime();
@@ -53,16 +57,16 @@ export function computeRefundAndClawback(input: ComputeRefundInputs): Cancellati
     refund = Math.round((annualPremium * daysRemaining) / daysInTerm);
   } else if (basis === 'short-rate') {
     const proRata = (annualPremium * daysRemaining) / daysInTerm;
-    refund = Math.round(proRata * (1 - SHORT_RATE_PENALTY));
+    refund = Math.round(proRata * (1 - cfg.shortRatePenalty));
   } // void-ab-initio: refund stays 0
 
-  const fullBrokerage = Math.round(annualPremium * SLIP_BROKERAGE_RATE);
+  const fullBrokerage = Math.round(annualPremium * cfg.brokerageRate);
   const clawbackKind = REASON_RULES[reason].clawback;
   const commissionClawback =
     clawbackKind === 'full'
       ? fullBrokerage
       : clawbackKind === 'partial'
-        ? Math.round(fullBrokerage * PARTIAL_CLAWBACK_FACTOR)
+        ? Math.round(fullBrokerage * cfg.partialClawbackFactor)
         : 0;
 
   // Bordereau net = syndicate share of premium movement.

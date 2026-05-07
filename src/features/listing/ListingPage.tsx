@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useRanBerri } from '@/store';
+import { useConfig } from '@/config';
 import {
   buildMorningBriefing,
   filterByTab,
@@ -98,6 +99,7 @@ export function ListingPage() {
 }
 
 function Masthead() {
+  const config = useConfig();
   return (
     <div
       className="hairline-b flex items-center justify-between"
@@ -116,7 +118,7 @@ function Masthead() {
           color: 'var(--color-ink)',
         }}
       >
-        RanBerri
+        {config.branding.productName}
       </span>
       <span
         className="mono"

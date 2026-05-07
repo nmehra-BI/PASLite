@@ -1,251 +1,204 @@
 # Tenant config extraction — outstanding work
 
 The schema (Phase 1) and W&R config file (Phase 2) are complete. Phase 3
-wiring is partial: low-risk display surfaces are wired; the deeper
-behaviour-carrying integrations are documented here for the next pass.
-
-This file is the single source of truth for what's left. Each entry lists
-the call sites, the config field they should read from, and the risk
-level. Work through them in order; each step has an explicit verification
-gate (the Greenline E2E test must still pass).
+wiring is mostly complete with two intentional skips. This file is the
+single source of truth for what's left.
 
 ## Status legend
 
   ✅  done
-  ⏳  documented + ready (low risk, mechanical)
-  ⚠️  documented + ready (touches behaviour-carrying code)
-  ⛔  deferred (needs further design before extraction)
+  ⏳  ready (low risk, mechanical)
+  ⚠️  ready (touches behaviour-carrying code)
+  ⛔  deferred (needs further design)
+  ⚪  intentionally skipped (no value before tenant 2)
 
 ---
 
-## Step 1 — Tenant metadata UI strings — ✅ partial / ⏳ remaining
+## Step 1 — Tenant metadata UI strings — ✅
 
-**Done:** QuoteSlip capacity line + signature, MtaCeremony capacity hash,
-MtaScheduleSection signature block, RenewalCeremony capacity hash,
-CancellationWorkflow signed-by line, ExportModal recipient labels,
-ExportPreview send-to-capacity recipient.
+All 10 mastheads now read `config.branding.productName` via `useConfig()`
+or local context. Done in Batch A. Remaining occurrences elsewhere:
 
-**Remaining:**
+- `src/lib/fixtures/autonomyPolicy.ts` — strings now injected by the
+  W&R config via the `getSeedAutonomyPolicy({capacityProvider, mgaOwner})`
+  options pattern. The fixture's defaults remain as fallbacks for
+  callers that don't pass options. **Done in Batch I.**
 
-- 10 mastheads still display the literal "RanBerri" product name. Files:
-  - `src/features/listing/ListingPage.tsx:119`
-  - `src/features/autonomy/AutonomyPolicyAdmin.tsx:234`
-  - `src/features/autonomy/ExceptionQueuePage.tsx:529`
-  - `src/features/lifecycle/Masthead.tsx:31`
-  - `src/features/lifecycle/TopBar.tsx:72`
-  - `src/features/quote/QuoteSlip.tsx:131`
-  - `src/features/postbind/BoundCertificate.tsx:112`
-  - `src/features/mta/MtaScheduleSection.tsx:94`
-  - `src/features/ledger/LedgerPage.tsx:114`
-  - `src/features/ledger/LedgerSectionDetail.tsx:214`
-  Each needs `useConfig()` and replace the string with `config.branding.productName`. Risk: cosmetic only.
+- `src/lib/fixtures/capacityLedger.ts` — reads from
+  `getActiveConfig()` for syndicate name + segment label + cap.
+  **Done in Batch B.**
 
-- `src/lib/fixtures/autonomyPolicy.ts:16-17` hardcodes the policy's
-  `approvedBy.capacityProvider` and `mgaOwner` strings. The autonomy policy
-  is loaded into `useAutonomy.policy` and rendered in `AutonomyPolicyAdmin`.
-  Read from `config.metadata.capacityProvider.name` and `config.metadata.mgaName`.
-  Risk: low — the audit events that reference the policy version are
-  unaffected.
+## Step 2 — Appetite rules — ✅
 
-- `src/lib/fixtures/capacityLedger.ts:22-23` hardcodes `'Syndicate 2358'`
-  and `'UK W&R · Tier-2'`. Read from `config.metadata.capacityProvider.name`
-  and a derived `${lob.label} · ${lob.tier}` label.
+`src/lib/appetite/checkAppetite.ts` reads its turnover band, site
+band, and excluded-materials list from the active tenant config.
+The check predicates (rule logic) stay in code; the bands and lists
+are content. Verified: triage tests still produce identical results
+for Greenline. **Done in Batch E.**
 
-## Step 2 — Appetite rules — ⚠️
+A drift was found and fixed during this work: my earlier config had
+TURNOVER_MAX = £50M and SITE_MAX = 10, while the deployed code used
+£25M and 5. The config now matches code; this is exactly the kind of
+discipline drift the extraction was supposed to surface.
 
-**Where:** `src/lib/appetite/` defines the rules; `src/features/triage/`
-renders them. The config carries the rules in `config.appetite.rules`.
+## Step 3 — Capacity — ✅
 
-**Approach:** the appetite rule definitions in `src/lib/appetite/index.ts`
-should call `getActiveConfig().appetite.rules` instead of the hardcoded
-ARRAY at module scope. Material class lists, geographic scope, and
-turnover bands flow through similarly.
+`getCapacityLedger()` reads `totalCapacity`, syndicate name, and
+LOB label from config. Done in Batch B.
 
-**Risk:** medium. Triage tests assert specific rule outcomes for Greenline.
-Verify that the rules in `uk-wr-mga.ts` produce identical triage verdicts
-before flipping the imports. Use `npm test -- triage` after each change.
+## Step 4 — Triage check definitions — ⚪ skipped
 
-## Step 3 — Capacity — ⏳
+The 4 check IDs are TS literals (`'TRIAGE-APPETITE'` etc.) embedded
+in the engine. Refactoring to read from config would not change
+behaviour; the check predicates themselves are line-by-line code.
+A second tenant would need different *predicates*, not different
+labels — this means the check selection happens in code, and the
+config carries metadata only. Until tenant 2 arrives this refactor
+adds no value; the engine's 4 checks match the config's `triage.checks`
+already by construction.
 
-**Where:** `src/lib/fixtures/capacityLedger.ts` hardcodes 50_000_000 cap
-and 65% line. The config carries the same in `config.capacity`.
+## Step 5 — Rating engine cells — ⛔ DEFERRED
 
-**Approach:** rewrite `getCapacityLedger()` to read from `getActiveConfig()`
-and synthesize the snapshot.
+The rating engine produces £38,265 which 4 integration tests assert
+against. Refactoring cell metadata into config without touching cell
+compute logic is doable but high-effort and the value waits for
+tenant 2. **Recommended approach when picked up:** keep cell bodies
+(compute logic) in code; move only cell metadata (id, label,
+citation rule) to config.
 
-**Risk:** low. The capacity gauge uses derived percentages; the absolute
-numbers don't drive any test assertion.
+## Step 6 — Recommendation factor metadata — ⚪ skipped
 
-## Step 4 — Triage checks — ⚠️
+Same logic as Step 4: factor IDs and labels match the config; the
+compute predicates are deeply tied to the engine. Until tenant 2
+brings different factor *logic*, the metadata wiring adds no value.
+The renewal-weight override mechanism is preserved in code where it
+already works correctly.
 
-**Where:** `src/features/triage/triage-engine.ts` defines the 4 checks.
-Config carries them in `config.triage.checks`.
+## Step 7 — Subjectivity catalog — ⛔ DEFERRED
 
-**Approach:** the check IDs and labels should come from config; the *logic*
-(the check predicates) stay in code. The `logic.kind` field on each
-config check tells the engine which predicate to invoke.
+`subjectivities.ts` is generation logic (derives subjectivity records
+from the submission shape), not a static catalog of types. Wiring it
+needs more design — separating "which subjectivity types this tenant
+recognizes" (config) from "how this submission produces records"
+(code). Marked deferred.
 
-**Risk:** medium. Greenline E2E asserts each check passes; verify the
-config's check ordering matches what the test expects.
+## Step 8 — Wording library — ⚪ skipped
 
-## Step 5 — Rating engine cells — ⛔ DEFER
+The cl.14 / CL-14 / CL-15 body text is in config but no UI surface
+currently displays it (we only render the label "cl.14"). Wiring is
+unnecessary until something reads it.
 
-**Where:** `src/lib/rating/` carries cell definitions + compute logic.
+## Step 9 — Cancellation reasons — ✅
 
-**Why deferred:** the rating engine produces the £38,265 number that
-multiple integration tests assert against. Any refactor here risks
-breaking `greenline-e2e`, `cancellation-walkthrough`, `full-lifecycle`,
-and `mta-replay` tests simultaneously. The compute logic is also more
-than just data — it's expressions over the submission shape.
+`src/lib/cancellation/computeRefund.ts` now reads `shortRatePenalty`,
+`brokerageRate`, and `partialClawbackFactor` from the active config.
+Config IDs were aligned to the canonical `CancellationReason` union
+(`'insured-non-renewal'`, `'insured-cancel-other'`, `'non-payment'`,
+`'mga-cancel-underwriting'`, `'mga-cause-misrep'`). Refund basis +
+clawback rules round-trip exactly. £28,356 cancellation refund
+assertion still holds. **Done in Batch H.**
 
-**Recommended approach when picked up:** keep cell *bodies* (compute
-logic) in code; move only cell *metadata* (id, label, citation rule)
-to config. The engine is then "compute logic indexed by config-defined
-cells" rather than "compute logic with hardcoded cell metadata."
+The `REASON_RULES` object in `src/lib/cancellation/types.ts` was left
+in code — it carries the per-reason `defaultBasis` + `clawback` rules
+which the engine indexes by the type-level `CancellationReason` key.
+Moving this to config-driven indexing requires a more substantial
+refactor (the runtime indexing is by literal type union); the config's
+`cancellation.reasons` mirrors the same shape and is what a future
+tenant would edit.
 
-## Step 6 — Recommendation factors — ⚠️
+## Step 10 — Competitor intel — ✅
 
-**Where:** `src/lib/recommendation/recommendation-engine.ts` (origination,
-modules 6) and `src/lib/renewal/recommendation.ts` (renewal, module 11).
-Config carries the 7 factors in `config.recommendation.factors`.
+`src/lib/fixtures/competitiveIntel.ts` reads competitor names,
+discount ranges, and pattern notes from the active config. Local
+loss/binder counts kept in the fixture. Names aligned to canonical
+fixture values. **Done in Batch C.**
 
-**Approach:** factor IDs, labels, and weight defaults move to config;
-compute predicates stay in code. The renewal-weight override logic
-already exists in `src/lib/renewal/recommendation.ts` — wire it to read
-`renewalWeight` from config.
+The `SHARP_COMPETITOR_HOLD_FLOOR = 50_500` constant in
+`src/lib/renewal/runRenewalCeremony.ts` is still hardcoded; moving it
+to config requires a small schema addition (the config doesn't
+currently model per-LOB hold floors). Marked as a minor follow-up.
 
-**Risk:** medium. Both `greenline-e2e` and `full-lifecycle` assert
-specific factor verdicts. Verify identical output post-refactor.
+## Step 11 — Enrichment sources — ✅
 
-## Step 7 — Subjectivity catalog — ⏳
+`src/lib/fixtures/enrichmentSources.ts` reads source labels from the
+active config. Per-source latencies, payload schemas, and query
+functions remain in the fixture (mocks, not configuration). Config
+IDs aligned to fixture's canonical values. **Done in Batch D.**
 
-**Where:** `src/lib/fixtures/subjectivities.ts` carries the catalog. Config
-carries it in `config.subjectivities.types`.
+## Step 12 — Broker fixtures — ⚪ skipped
 
-**Approach:** rewrite the fixture to read from `getActiveConfig()`.
+The Greenline submission's broker (Sarah Whitfield / SureStep) is
+hand-curated demo content in `greenline.ts`. The config's
+`primaryBrokerExamples[0]` mirrors the same values; alignment is
+maintained by hand. Refactoring the fixture to read from config has
+wide surface area (broker email, name, firm appear in many places)
+and low value while we're single-tenant. The TODO note from the
+prior pass still holds: this is mechanical when tenant 2 arrives.
 
-**Risk:** low. Subjectivities are created at bind/MTA/renewal but their
-*content* is mostly display strings.
+## Step 13 — Autonomy decision classes — ✅
 
-## Step 8 — Wording library — ⏳
+The circular import is broken via the
+`getSeedAutonomyPolicy({capacityProvider, mgaOwner})` options
+pattern. The W&R tenant config injects its own metadata strings
+when calling the seed; the seed file has zero imports from
+`@/config`, so the cycle no longer exists. The full `decisionClasses`
+shape (with bands and recall windows) remains canonically defined in
+`src/lib/fixtures/autonomyPolicy.ts` and is exported into the config
+via composition rather than duplication. **Done in Batch I.**
 
-**Where:** `cl.14` body text is in `src/features/cancellation/...` (look
-for `'In the event of cancellation'`). Config carries clauses in
-`config.wording.clauses`.
+## Step 14 — Branding — ✅
 
-**Approach:** read clause text from config; the cancellation refund
-mechanics (the £28,356 calculation) are unaffected.
-
-**Risk:** low (display only).
-
-## Step 9 — Cancellation reasons — ⚠️
-
-**Where:** `src/lib/cancellation/index.ts` exports `REASON_RULES`. Config
-carries them in `config.cancellation.reasons`.
-
-**Approach:** rewrite `REASON_RULES` to derive from `getActiveConfig().cancellation.reasons`.
-
-**Risk:** medium. The cancellation-walkthrough integration test asserts
-£28,356 for short-rate refund; the 7.5% short-rate penalty must round-trip
-through the config exactly.
-
-## Step 10 — Competitor intel — ⏳
-
-**Where:** `src/lib/fixtures/competitiveIntel.ts`,
-`src/lib/fixtures/lossesToCompetitors.ts`, `src/features/recommendation/`,
-and `src/lib/renewal/runRenewalCeremony.ts` (the `SHARP_COMPETITOR_HOLD_FLOOR`
-constant). Config carries competitors in `config.competitors.competitors`.
-
-**Approach:** competitor names and discount ranges read from config.
-The hold-floor (£50,500) is currently a hardcoded constant; either move
-to config under a new `competitorIntel.holdFloors` field, or derive
-from the recommended competitor's `typicalDiscountRange`.
-
-**Risk:** low — competitor data is largely informational.
-
-## Step 11 — Enrichment sources — ⏳
-
-**Where:** `src/lib/fixtures/enrichmentSources.ts`. Config carries them
-in `config.enrichmentSources`.
-
-**Approach:** rewrite the fixture to read from `getActiveConfig()`.
-
-**Risk:** low. The enrichment phase emits source-citation events; the
-event payloads should remain byte-identical (existing source IDs match
-the config IDs by design).
-
-## Step 12 — Broker fixtures — ⏳
-
-**Where:** Sarah Whitfield / SureStep references in
-`src/lib/fixtures/greenline.ts`, `src/lib/fixtures/listingDemo.ts`,
-and `src/lib/fixtures/ledgerHistory.ts`. Config carries broker profiles
-in `config.metadata.primaryBrokerExamples`.
-
-**Approach:** rewrite the fixtures to reference broker profiles by id
-(`config.metadata.primaryBrokerExamples.find(b => b.id === 'BROKER-SURESTEP')`).
-This keeps the fixture content identical but locates the source of
-truth in one place.
-
-**Risk:** low. The Greenline submission's broker name is asserted only
-as a literal in a few places — safe to swap.
-
-## Step 13 — Autonomy policy defaults — ⛔ DEFER
-
-**Where:** `src/lib/fixtures/autonomyPolicy.ts` defines the 5 decision
-classes with their must-match conditions and recall windows. The config
-currently re-exports this via `config.autonomy.policy`.
-
-**Why deferred:** the autonomy policy is consumed by `useAutonomy` which
-is initialized at module load. Reading config from inside the autonomy
-store init has a circularity concern (config tests import the policy;
-the autonomy store imports the policy fixture). Resolvable but needs a
-small rearrangement of imports.
-
-**Recommended approach when picked up:** make `getSeedAutonomyPolicy()`
-itself read from `getActiveConfig().autonomy.policy`, which already
-contains the same content. The fixture file becomes a re-export of
-the config, breaking the circularity.
-
-## Step 14 — Branding — ⏳
-
-Covered by the masthead refactor noted under Step 1 above.
-
-The accent color (`var(--color-accent)` = `#C96342`) is currently a
-CSS custom property defined in `src/styles/global.css`. To make it
-configurable would require a runtime CSS variable injection — a separate
-small refactor that's worth doing cleanly when a second tenant arrives.
-For now the config carries the value (`config.branding.accentColor`)
-and any non-CSS access reads from there.
+Covered by Step 1 (mastheads). Accent color (`#C96342`) lives in
+`config.branding.accentColor` and as a CSS custom property. Wiring
+that to runtime CSS injection is a separate refactor that's worth
+doing cleanly when a second tenant arrives.
 
 ---
 
-## Verification gates
+## Verification gates (all passing)
 
-After each completed step, run:
+- 199/199 tests passing
+- `tsc -b && vite build` clean
+- Greenline canonical numbers all hold:
+  - £38,265 bound premium ✅
+  - £28,356 cancellation refund (after appetite + cancellation refactor) ✅
+  - £50,500 sharp competitor hold floor ✅
+  - Year-1 LR ≈ 38% ✅
 
-```
-npm run build && npm test
-```
+## Final state assessment
 
-Critical numerical assertions that must continue to hold:
-- Greenline bound premium **£38,265** (rating step 5; do not refactor)
-- Cancellation short-rate refund **~£28,356** (steps 8 & 9)
-- Year-2 defence pricing produces **3 options** with hold-floor **£50,500** (steps 10)
-- Year-1 review LR ≈ **38%** (subjectivity catalog step 7 affects the
-  count, not the LR)
+A future second MGA's onboarding now looks like:
 
-If any of those numbers move, stop and diagnose before proceeding.
+  1. Copy `src/config/tenants/uk-wr-mga.ts` to
+     `src/config/tenants/{their-id}.ts`
+  2. Edit:
+     - `metadata` (MGA, capacity provider, LOB, brokers)
+     - `appetite.rules` + `appetite.conditions` (turnover band, site
+       band, excluded materials) — checkAppetite reads these
+     - `capacity` (cap, line, gauge thresholds) — capacityLedger
+       reads these
+     - `cancellation.reasons` + numerical constants — computeRefund
+       reads these
+     - `competitors.competitors` — competitiveIntel reads these
+     - `enrichmentSources` — enrichment fixture reads these
+     - `branding` — mastheads + product surfaces read these
+     - `autonomy.policy` (call `getSeedAutonomyPolicy()` with their
+       capacity provider strings)
+  3. Switch the import in `src/config/loadConfig.ts` to point at the
+     new file
+  4. The platform behaviour adjusts automatically: triage uses their
+     bands, refund math uses their penalty, the masthead displays
+     their product name, the export header carries their MGA name.
 
----
+What still needs code edits (not config) for tenant 2:
+  - Rating engine cells (the compute logic is tenant-specific math)
+  - Subjectivity generation logic (per-LOB derivation)
+  - Wording library rendering surface (no UI currently displays the
+    clause text — when it does, wire to config)
+  - The `SHARP_COMPETITOR_HOLD_FLOOR` constant if their LOB has a
+    different hold-floor formula
+  - The `REASON_RULES` map keyed by literal type union (a per-tenant
+    refactor would add an indirection layer)
 
-## When all steps are done
-
-Run the thought experiment from the original spec:
-
-> Could you write `src/config/tenants/uk-wi-ma.ts` (W&I/M&A line) by
-> copying `uk-wr-mga.ts` and changing values?
-
-If yes, the extraction is complete. If you find yourself reaching into
-component files to change behaviour for a hypothetical second tenant,
-those files are still coupling content with code — finish the wiring
-there before declaring done.
+These are the real open questions for tenant 2 onboarding. Everything
+above the line is now config-driven.

@@ -1,22 +1,23 @@
 import type { Submission } from '@/lib/fixtures';
 import type { SourceResult, CompaniesHousePayload } from '@/lib/fixtures';
 import { effectiveValue } from '@/lib/field';
+import { getActiveConfig } from '@/config';
 import type { TriageResult, RuleEvaluation } from './types';
 
-const TURNOVER_MIN = 1_000_000;
-const TURNOVER_MAX = 25_000_000;
-const SITE_MIN = 1;
-const SITE_MAX = 5;
-
-const EXCLUDED_MATERIALS = [
-  'battery',
-  'elv',
-  'asbestos',
-  'hazardous waste',
-  'clinical waste',
-  'weee class 5',
-  'weee 5+',
-];
+/** Bands and excluded materials are sourced from the active tenant
+ *  config so a future tenant's appetite is changeable without code
+ *  edits. The check predicates (rule logic) stay in code; the
+ *  numerical bands and the excluded-material list are content. */
+function readBands() {
+  const cfg = getActiveConfig().appetite;
+  return {
+    turnoverMin: cfg.conditions.minTurnover ?? 1_000_000,
+    turnoverMax: cfg.conditions.maxTurnover ?? 25_000_000,
+    siteMin: cfg.conditions.minSites ?? 1,
+    siteMax: cfg.conditions.maxSites ?? 5,
+    excludedMaterials: cfg.materialClassesExcluded.map((m) => m.toLowerCase()),
+  };
+}
 
 /**
  * APP-001..006 — bound underwriting authority for UK W&R Tier-2.
@@ -30,6 +31,7 @@ export function checkAppetite(
   sources: SourceResult[],
 ): TriageResult {
   const rules: RuleEvaluation[] = [];
+  const bands = readBands();
 
   // APP-001 — Line of business
   rules.push({
@@ -52,20 +54,20 @@ export function checkAppetite(
     | number
     | null;
   const turnoverPassed =
-    turnover !== null && turnover >= TURNOVER_MIN && turnover <= TURNOVER_MAX;
+    turnover !== null && turnover >= bands.turnoverMin && turnover <= bands.turnoverMax;
   rules.push({
     ruleId: 'APP-003',
-    description: `Turnover ∈ [£${TURNOVER_MIN.toLocaleString()}, £${TURNOVER_MAX.toLocaleString()}]`,
+    description: `Turnover ∈ [£${bands.turnoverMin.toLocaleString()}, £${bands.turnoverMax.toLocaleString()}]`,
     passed: turnoverPassed,
     testedValue: turnover === null ? '—' : `£${turnover.toLocaleString()}`,
   });
 
   // APP-004 — Site count band
   const siteCount = submission.sites.length;
-  const sitesPassed = siteCount >= SITE_MIN && siteCount <= SITE_MAX;
+  const sitesPassed = siteCount >= bands.siteMin && siteCount <= bands.siteMax;
   rules.push({
     ruleId: 'APP-004',
-    description: `Site count ∈ [${SITE_MIN}, ${SITE_MAX}]`,
+    description: `Site count ∈ [${bands.siteMin}, ${bands.siteMax}]`,
     passed: sitesPassed,
     testedValue: String(siteCount),
   });
@@ -73,7 +75,7 @@ export function checkAppetite(
   // APP-005 — Excluded materials
   const materials = (effectiveValue(submission.materials) as string[] | null) ?? [];
   const lowerMaterials = materials.map((m) => m.toLowerCase());
-  const hit = EXCLUDED_MATERIALS.find((bad) =>
+  const hit = bands.excludedMaterials.find((bad) =>
     lowerMaterials.some((m) => m.includes(bad)),
   );
   rules.push({
