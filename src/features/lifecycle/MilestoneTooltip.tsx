@@ -11,19 +11,25 @@ import {
  *   - completed (before now)        → "View policy state at X"
  *   - current (now)                 → "Currently viewing: X"
  *   - future (after now)            → "Forecast view at X"
+ *
+ * `labelOverride` is supplied by the ribbon when the displayed
+ * label is derived from runtime state (the MTA case); falls back to
+ * the static MILESTONE_LABEL map for non-runtime-derived milestones.
  */
 export function MilestoneTooltip({
   visible,
   milestone,
   now,
   date,
+  labelOverride,
 }: {
   visible: boolean;
   milestone: LifecycleMilestone;
   now: LifecycleMilestone;
   date: string | null;
+  labelOverride?: string;
 }) {
-  const label = MILESTONE_LABEL[milestone];
+  const label = labelOverride ?? MILESTONE_LABEL[milestone];
   const state = viewingState(milestone, now);
   const headline =
     state === 'now'

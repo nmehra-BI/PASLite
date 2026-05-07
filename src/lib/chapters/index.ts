@@ -93,7 +93,11 @@ export function deriveChapters(s: RanBerriState): ChapterDescriptor[] {
     },
     {
       id: 'mta-04',
-      label: 'MTA-04',
+      // Label derives from policy state: when an MTA has committed,
+      // we surface its endorsement id (e.g. 'MTA-04' for Greenline,
+      // 'MTA-02' for a tenant with one prior admin endorsement).
+      // Falls back to the generic phase label before any MTA exists.
+      label: mtaChapterLabel(s),
       available: mtaActive || mtaCommitted,
       status: status(mtaActive || mtaCommitted, mtaCommitted, mtaActive && !mtaCommitted),
     },
@@ -118,4 +122,16 @@ export function deriveChapters(s: RanBerriState): ChapterDescriptor[] {
 /** Should the section default to expanded? Current = yes; complete or pending = no. */
 export function defaultExpandedFor(status: ChapterStatus): boolean {
   return status === 'current';
+}
+
+/** Derive the displayed label for the MTA chapter button. Pulls the
+ *  endorsement id from the most recent committed MTA, then from the
+ *  in-flight request, then falls back to a generic phase label. */
+function mtaChapterLabel(s: RanBerriState): string {
+  const latest = s.policy.versions[s.policy.versions.length - 1];
+  if (latest) {
+    return `MTA-${String(latest.endorsementNumber).padStart(2, '0')}`;
+  }
+  if (s.mta.request?.id) return s.mta.request.id;
+  return 'MTA';
 }

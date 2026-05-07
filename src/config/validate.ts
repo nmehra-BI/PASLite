@@ -46,6 +46,7 @@ const tenantMetadataSchema = z.object({
   capacityProvider: capacityProviderRefSchema,
   lineOfBusiness: lineOfBusinessRefSchema,
   primaryBrokerExamples: z.array(brokerProfileSchema).min(1),
+  priorAdministrativeEndorsements: z.number().int().nonnegative().optional(),
 });
 
 const appetiteLogicSchema = z.object({

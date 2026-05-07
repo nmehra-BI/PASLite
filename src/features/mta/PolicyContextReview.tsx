@@ -146,7 +146,7 @@ export function PolicyContextReview() {
         />
         <Column
           side="after"
-          title="AFTER (with MTA-04 applied)"
+          title={`AFTER (with ${mta.request?.id ?? 'MTA'} applied)`}
           turnover={diff.after.turnover}
           deltaTurnoverAbs={diff.deltas.turnoverAbs}
           siteCount={diff.after.siteCount}

@@ -59,10 +59,35 @@ export const MILESTONE_LABEL: Record<LifecycleMilestone, string> = {
   quote: 'Quote',
   quoted: 'Quoted',
   bind: 'Bind',
-  'mta-04': 'MTA-04',
+  // 'mta-04' is the stable lifecycle-phase slug; the displayed label
+  // for an actual MTA derives from policy state via getMilestoneLabel().
+  // The fallback label below is used only when policy state isn't
+  // available to the caller (e.g. legacy lookup paths).
+  'mta-04': 'MTA',
   cancel: 'Cancel',
   renewal: 'Renewal',
 };
+
+/** Resolve the displayed label for a lifecycle milestone, deriving
+ *  the MTA milestone's label from policy state when present. Falls
+ *  back to the static MILESTONE_LABEL map for non-MTA milestones. */
+export function getMilestoneLabel(
+  milestone: LifecycleMilestone,
+  state: {
+    policy: { versions: Array<{ endorsementNumber: number }> };
+    mta: { request: { id: string } | null };
+  },
+): string {
+  if (milestone === 'mta-04') {
+    const latest = state.policy.versions[state.policy.versions.length - 1];
+    if (latest) {
+      return `MTA-${String(latest.endorsementNumber).padStart(2, '0')}`;
+    }
+    if (state.mta.request?.id) return state.mta.request.id;
+    return 'MTA';
+  }
+  return MILESTONE_LABEL[milestone];
+}
 
 const MILESTONE_ORDER: LifecycleMilestone[] = [
   'quote',

@@ -189,6 +189,20 @@ export type PolicyReplay = {
   bound: boolean;
   baseBindAt: string | null;
   versions: PolicyVersionRecord[];
+  /** Count of administrative endorsements that exist BEFORE the
+   *  cockpit's tracked window (versions[]). The cockpit's first MTA
+   *  is endorsement (priorEndorsementCount + 1).
+   *
+   *  For the Greenline demo this is 3 (original schedule + two
+   *  prior administrative endorsements), so the first MTA renders
+   *  as MTA-04. A future tenant's policy with no prior administrative
+   *  endorsements would set this to 0; their first MTA would be
+   *  MTA-01.
+   *
+   *  Populated on bind.committed from
+   *  config.metadata.priorAdministrativeEndorsements.
+   */
+  priorEndorsementCount: number;
 };
 
 export function freshPolicy(): PolicyReplay {
@@ -196,5 +210,6 @@ export function freshPolicy(): PolicyReplay {
     bound: false,
     baseBindAt: null,
     versions: [],
+    priorEndorsementCount: 0,
   };
 }

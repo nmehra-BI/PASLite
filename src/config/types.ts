@@ -51,6 +51,13 @@ export type TenantMetadata = {
   capacityProvider: CapacityProviderRef;
   lineOfBusiness: LineOfBusinessRef;
   primaryBrokerExamples: BrokerProfile[];
+  /** Count of administrative endorsements considered to exist on
+   *  the policy before the cockpit's tracked window opens. Set to
+   *  the number of pre-tracking administrative endorsements (e.g.
+   *  original schedule + name-corrections). Defaults to 0; set to
+   *  3 for the Greenline demo so the first MTA renders as MTA-04
+   *  (matching the original demo narrative). */
+  priorAdministrativeEndorsements?: number;
 };
 
 export type CapacityProviderRef = {

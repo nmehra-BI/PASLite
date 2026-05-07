@@ -42,6 +42,13 @@ export const ukWrMgaConfig: TenantConfig = {
       regulator: 'FCA',
       market: 'lloyds',
     },
+    // Greenline's policy is treated as having 3 prior administrative
+    // endorsements (original schedule + 2 housekeeping). That offset
+    // makes the first MTA render as MTA-04 — the original demo
+    // narrative — without seeding fake admin-endorsement records
+    // into policy.versions. A future tenant's first MTA would
+    // render as MTA-(N+1) for whatever N they configure.
+    priorAdministrativeEndorsements: 3,
     primaryBrokerExamples: [
       {
         id: 'BROKER-SURESTEP',

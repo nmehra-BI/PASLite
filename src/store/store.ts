@@ -11,6 +11,7 @@ import type {
 // Import directly (not via the barrel) to avoid a circular load
 // through @/lib/bind/runBindCeremony, which imports the store back.
 import { deriveBoundLedgerEntry } from '@/lib/bind/deriveBoundLedgerEntry';
+import { getActiveConfig } from '@/config';
 import type { UnderwriterCorrected } from '@/lib/field';
 import {
   ALL_ARTIFACTS,
@@ -1369,6 +1370,12 @@ function applySingleEvent(s: RanBerriState, e: AuditEvent): void {
       s.submissionState = 'bound';
       s.policy.bound = true;
       s.policy.baseBindAt = e.at;
+      // Seed the prior-endorsement offset from config. Greenline ships
+      // 3 (original schedule + 2 admin endorsements) so the first MTA
+      // renders as MTA-04; a tenant with no prior admin endorsements
+      // would default to 0 and their first MTA would be MTA-01.
+      s.policy.priorEndorsementCount =
+        getActiveConfig().metadata.priorAdministrativeEndorsements ?? 0;
       // Advance the lifecycle 'now' to the Bind milestone — this is
       // what fills the seam in the ribbon and shifts the playhead.
       s.lifecycle.now = 'bind';

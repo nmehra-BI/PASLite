@@ -1,15 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRanBerri } from '@/store';
-import type { LifecycleMilestone } from '@/lib/fixtures';
-
-const MILESTONE_LABEL: Record<LifecycleMilestone, string> = {
-  quote: 'Quote',
-  quoted: 'Quoted',
-  bind: 'Bind',
-  'mta-04': 'MTA-04',
-  cancel: 'Cancel',
-  renewal: 'Renewal',
-};
+import { getMilestoneLabel } from './milestoneMeta';
 
 /**
  * Historical-scrub treatment for the canvas.
@@ -27,7 +18,9 @@ export function HistoricalScrubOverlay() {
   const cursor = useRanBerri((s) => s.lifecycle.cursor);
   const now = useRanBerri((s) => s.lifecycle.now);
   const scrub = useRanBerri((s) => s.scrubLifecycle);
+  const fullState = useRanBerri();
   const scrubbed = cursor !== now;
+  const cursorLabel = getMilestoneLabel(cursor, fullState);
 
   return (
     <AnimatePresence>
@@ -72,7 +65,7 @@ export function HistoricalScrubOverlay() {
                 letterSpacing: '-0.005em',
               }}
             >
-              scrubbed to {MILESTONE_LABEL[cursor]} · canvas tinted to
+              scrubbed to {cursorLabel} · canvas tinted to
               indicate you&rsquo;re off-now
             </span>
           </div>

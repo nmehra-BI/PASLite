@@ -208,7 +208,9 @@ const CHAPTER_LABEL: Record<ChapterId, string> = {
   quote: 'quote',
   recommendation: 'recommendation',
   bind: 'bind',
-  'mta-04': 'mta-04',
+  // Generic phase label; the per-MTA endorsement id renders inside
+  // MtaSummary content rather than in the chapter chrome.
+  'mta-04': 'mta',
   cancellation: 'cancellation',
   renewal: 'renewal',
 };

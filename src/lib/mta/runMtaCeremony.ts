@@ -16,6 +16,7 @@ import {
   type MtaRequest,
 } from '@/lib/fixtures';
 import { computeSha, GREENLINE_CONSUMPTION } from '@/lib/bind';
+import { computeEndorsementId, parseEndorsementId } from '@/lib/policy/computeEndorsementId';
 import { computeDeltaRating } from './computeDelta';
 import { freshMta, type MtaHashId } from './types';
 
@@ -46,19 +47,19 @@ export function receiveMtaRequest(opts?: {
     useRanBerri.setState({ mta: freshMta() });
   }
 
-  // Pick a default request. For the first MTA we use the Manchester
-  // fixture as-is (id = MTA-04). For subsequent MTAs we increment
-  // the id off the prior version count so the schedule ref reads
-  // MTA-05, MTA-06, etc. — collisions with the fixture's MTA-04
-  // are avoided.
+  // The endorsement id is derived from policy state, not from the
+  // fixture or the caller. existingEndorsements = priorEndorsementCount
+  // (admin endorsements before the cockpit's window) + versions.length
+  // (MTAs already committed); the new id is the next ordinal. For
+  // Greenline this lands at MTA-04 on the first MTA (3 prior + 0 versions
+  // + 1); subsequent MTAs roll forward to MTA-05, MTA-06, etc.
   const baseRequest = opts?.request ?? getManchesterMtaRequest();
-  const reused = !opts?.request;
-  const nextId = reused && policy.versions.length > 0
-    ? `MTA-${(4 + policy.versions.length).toString().padStart(2, '0')}`
-    : baseRequest.id;
+  const existingEndorsements =
+    policy.priorEndorsementCount + policy.versions.length;
+  const computedId = computeEndorsementId(existingEndorsements);
   const stamped: MtaRequest = {
     ...baseRequest,
-    id: nextId,
+    id: computedId,
     receivedAt: opts?.receivedAt ?? new Date().toISOString(),
   };
   appendAuditEvent({
@@ -296,13 +297,13 @@ export function generateMtaSchedule() {
   if (!mta.delta) throw new Error('generateMtaSchedule: delta rating required');
 
   const policyRef = bind.policyRef ?? mta.request.policyRef;
-  // Endorsement number derives from the fixture id "MTA-04" so the
-  // demo's schedule ref reads as POL-29481-MTA-04, matching the spec
-  // and the lifecycle ribbon's mta-04 milestone. Falls back to a
-  // monotonic counter if the id is non-standard.
-  const idMatch = mta.request.id.match(/MTA-(\d+)/i);
-  const endorsementNumber = idMatch ? parseInt(idMatch[1]!, 10) : state.policy.versions.length + 1;
-  const scheduleRef = `${policyRef}-MTA-${endorsementNumber.toString().padStart(2, '0')}`;
+  // Endorsement number is the parsed runtime id (stamped at receive
+  // time from policy state); the schedule ref composes it with the
+  // policy ref. For Greenline this reads POL-29481-MTA-04.
+  const endorsementNumber =
+    parseEndorsementId(mta.request.id) ??
+    state.policy.priorEndorsementCount + state.policy.versions.length + 1;
+  const scheduleRef = `${policyRef}-${mta.request.id || computeEndorsementId(state.policy.priorEndorsementCount + state.policy.versions.length)}`;
   const SHORT_DATE_FMT = new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',
     month: 'long',
@@ -370,11 +371,11 @@ export function commitMta(signedBy: string = 'nm') {
     mta.hashes.every((h) => h.status === 'confirmed' || h.status === 'overridden');
   if (!allConfirmed) throw new Error('commitMta: both hashes must be confirmed');
 
-  // Match the schedule's endorsement number derivation (fixture id).
-  const idMatch = mta.request.id.match(/MTA-(\d+)/i);
-  const endorsementNumber = idMatch
-    ? parseInt(idMatch[1]!, 10)
-    : policy.versions.length + 1;
+  // Endorsement number from the runtime id (stamped at receive time);
+  // fallback to the policy-state derivation if the id is missing.
+  const endorsementNumber =
+    parseEndorsementId(mta.request.id) ??
+    policy.priorEndorsementCount + policy.versions.length + 1;
 
   appendAuditEvent({
     actor: { kind: 'underwriter', id: signedBy },

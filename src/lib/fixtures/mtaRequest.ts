@@ -48,7 +48,11 @@ export type MtaRequest = {
 };
 
 export const MANCHESTER_MTA: MtaRequest = {
-  id: 'MTA-04',
+  // The endorsement id is derived at runtime by receiveMtaRequest()
+  // from policy state (priorEndorsementCount + versions.length + 1).
+  // This sentinel is replaced before the request reaches any consumer;
+  // the fixture intentionally describes substance only.
+  id: '',
   policyRef: 'POL-29481',
   effectiveDate: '2026-08-01T00:00:00+01:00',
   changeType: 'add-site',

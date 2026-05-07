@@ -8,6 +8,7 @@ import { getAtPath, setAtPath } from '@/lib/paths';
 // Import directly to dodge a circular load through the bind barrel
 // (runBindCeremony imports the store).
 import { deriveBoundLedgerEntry } from '@/lib/bind/deriveBoundLedgerEntry';
+import { getActiveConfig } from '@/config';
 
 /**
  * Reconstruct cockpit state from the audit log.
@@ -1098,6 +1099,11 @@ export function replay(events: AuditEvent[]): ReplayResult {
         submissionState = 'bound';
         policy.bound = true;
         policy.baseBindAt = e.at;
+        // Seed the prior-endorsement offset from active tenant config so
+        // computed endorsement IDs (MTA-NN) reflect the tenant's policy
+        // history. Default 0 when no offset is configured.
+        policy.priorEndorsementCount =
+          getActiveConfig().metadata.priorAdministrativeEndorsements ?? 0;
         // Compound the same-MGA ledger from the live submission. Replay
         // produces a per-log ledger; the store merges this with any
         // pre-existing persisted ledger from prior submissions on

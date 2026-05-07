@@ -1,8 +1,8 @@
 import { motion } from 'framer-motion';
 import { useRanBerri, type RanBerriState } from '@/store';
 import {
-  MILESTONE_LABEL,
   formatMilestoneDateLong,
+  getMilestoneLabel,
   milestoneDate,
   viewingState,
 } from './milestoneMeta';
@@ -25,7 +25,7 @@ export function RibbonStatusBar() {
   const cursorDate = milestoneDate(cursor, fullState);
   const nowDate = milestoneDate(now, fullState);
 
-  const cursorLabel = MILESTONE_LABEL[cursor];
+  const cursorLabel = getMilestoneLabel(cursor, fullState);
 
   const eyebrowGlyph =
     state === 'now' ? '●' : state === 'historical' ? '◐' : '◯';

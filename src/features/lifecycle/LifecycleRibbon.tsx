@@ -32,7 +32,11 @@ const MILESTONES: MilestoneSpec[] = [
   { key: 'quote', label: 'Quote', at: 0.04, real: true },
   { key: 'quoted', label: 'Quoted', at: 0.14, real: true },
   { key: 'bind', label: 'Bind', at: 0.26, real: false },
-  { key: 'mta-04', label: 'MTA-04', at: 0.5, real: false },
+  // The 'mta-04' slug is the stable lifecycle-phase identifier.
+  // The displayed label is overridden at render time from policy
+  // state via mtaLabel; this static placeholder is replaced before
+  // anything renders.
+  { key: 'mta-04', label: 'MTA', at: 0.5, real: false },
   { key: 'cancel', label: 'Cancel', at: 0.74, real: false },
   { key: 'renewal', label: 'Renewal', at: 0.96, real: false },
 ];
@@ -85,16 +89,32 @@ export function LifecycleRibbon({ compact = false }: Props = {}) {
   const isCancelled = cancellation.phase === 'committed' || cancellation.phase === 'sent';
   const renewal = useRanBerri((s) => s.renewal);
   const isRenewed = renewal.phase === 'committed' || renewal.phase === 'sent';
+
+  // The MTA chapter milestone's displayed label derives from the
+  // policy's most recent committed MTA, falling back to the request's
+  // stamped id during the workflow, then to a generic 'MTA' before
+  // any endorsement exists. Slug stays 'mta-04' as the stable
+  // lifecycle-phase identifier; only the displayed label varies.
+  const liveMtaRequest = useRanBerri((s) => s.mta.request);
+  const latestMtaVersion = policy.versions[policy.versions.length - 1];
+  const mtaLabel = latestMtaVersion
+    ? `MTA-${String(latestMtaVersion.endorsementNumber).padStart(2, '0')}`
+    : (liveMtaRequest?.id || 'MTA');
+
   const visibleMilestones = MILESTONES.filter((m) => {
     if (isCancelled && m.key === 'renewal') return false;
     if (isRenewed && m.key === 'cancel') return false;
     return true;
-  });
+  }).map((m) => (m.key === 'mta-04' ? { ...m, label: mtaLabel } : m));
 
   const mtaMiniMarkers = policy.versions.map((v, i) => {
     const fraction = (i + 1) / Math.max(1, policy.versions.length + 0.5);
     const at = 0.26 + fraction * (0.5 - 0.26);
-    return { id: v.versionId, at, label: `MTA-0${v.endorsementNumber}` };
+    return {
+      id: v.versionId,
+      at,
+      label: `MTA-${String(v.endorsementNumber).padStart(2, '0')}`,
+    };
   });
 
   const subjectivityTicks = subjectivities
@@ -463,12 +483,14 @@ function MilestoneArea({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* tooltip */}
+      {/* tooltip — pass the (possibly derived) label so MTA shows the
+          correct endorsement id. */}
       <MilestoneTooltip
         visible={tooltipShown}
         milestone={milestone.key}
         now={now}
         date={date}
+        labelOverride={milestone.label}
       />
 
       {/* clickable dot button */}
