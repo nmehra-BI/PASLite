@@ -8,6 +8,7 @@
  */
 
 import { useRanBerri } from '@/store';
+import { getActiveConfig } from '@/config';
 import { computeSha } from '@/lib/bind';
 import { effectiveValue } from '@/lib/field';
 import {
@@ -21,6 +22,14 @@ import { computeDefencePricing } from './computeDefencePricing';
 import { buildRenewalRecommendation } from './recommendation';
 
 const SHARP_COMPETITOR_HOLD_FLOOR = 50_500;
+
+/** Resolve the primary sharp competitor from the active tenant
+ *  config. Returns null when no competitor is profiled as 'sharp';
+ *  callers fall back to a generic phrase. */
+function getSharpCompetitorName(): string | null {
+  const competitors = getActiveConfig().competitors.competitors;
+  return competitors.find((c) => c.profile === 'sharp')?.name ?? null;
+}
 
 export function triggerRenewal(opts?: { daysToExpiry?: number }) {
   const state = useRanBerri.getState();
@@ -178,6 +187,7 @@ export function priceDefence() {
   const result = computeDefencePricing({
     technicalPremium: renewal.year2.technicalPremium,
     sharpCompetitorHoldFloor: SHARP_COMPETITOR_HOLD_FLOOR,
+    sharpCompetitorName: getSharpCompetitorName() ?? undefined,
     brokerTarget: renewal.insuredChanges.brokerTargetPremium,
   });
   appendAuditEvent({

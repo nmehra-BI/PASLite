@@ -13,7 +13,25 @@
 
 import { getLedgerHistory } from '@/lib/fixtures';
 import { applyAtRiskDetection } from '@/lib/ledger';
+import { getActiveConfig } from '@/config';
 import type { ListingEntry, MorningBriefing } from './types';
+
+/** Resolve the primary sharp competitor for the active tenant from
+ *  config. Used by the marginalia pattern detector + variant strings
+ *  so the briefing speaks the configured competitor's name rather
+ *  than a hardcoded one. Returns null when nothing is profiled as
+ *  'sharp'; callers fall back to a generic phrase. */
+function getSharpCompetitor(): { name: string; pattern: RegExp } | null {
+  const competitors = getActiveConfig().competitors.competitors;
+  const sharp = competitors.find((c) => c.profile === 'sharp');
+  if (!sharp) return null;
+  // Match on the competitor's leading word (or the whole name) so
+  // listing entries that mention "RegentMGA approached..." still
+  // catch even when the status uses a slightly different form.
+  const head = sharp.name.split(/\s+/)[0]!;
+  const escaped = head.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return { name: sharp.name, pattern: new RegExp(escaped, 'i') };
+}
 
 const DATE_FMT = new Intl.DateTimeFormat('en-GB', {
   weekday: 'long',
@@ -75,16 +93,23 @@ function pickMarginalia(input: {
 }): string {
   const { entries, now, needsAttention, awaitingBroker, inForce } = input;
 
-  // (1) RegentMGA pressure pattern — competitor mentions in status/context.
-  const regentTouches = entries.filter(
-    (e) => /regent/i.test(e.status) || /regent/i.test(e.context ?? ''),
-  );
-  if (regentTouches.length >= 2) {
-    const sarahCount = entries.filter((e) => e.brokerName.startsWith('Sarah')).length;
-    if (sarahCount >= 3) {
-      return `RegentMGA's been busy this week — ${regentTouches.length} of your records mention them. Sarah at SureStep is on ${sarahCount}. The cockpit suggests batching her communications today.`;
+  // (1) Sharp-competitor pressure pattern — mentions in status/context.
+  // The competitor name + match pattern come from the active tenant
+  // config so a future tenant's marginalia speaks their landscape.
+  const sharp = getSharpCompetitor();
+  if (sharp) {
+    const competitorTouches = entries.filter(
+      (e) => sharp.pattern.test(e.status) || sharp.pattern.test(e.context ?? ''),
+    );
+    if (competitorTouches.length >= 2) {
+      const sarahCount = entries.filter((e) =>
+        e.brokerName.startsWith('Sarah'),
+      ).length;
+      if (sarahCount >= 3) {
+        return `${sharp.name}'s been busy this week — ${competitorTouches.length} of your records mention them. Sarah at SureStep is on ${sarahCount}. The cockpit suggests batching her communications today.`;
+      }
+      return `${sharp.name}'s been busy this week — ${competitorTouches.length} of your records mention competitor pressure. Worth a defence-pricing review on quoted-out submissions.`;
     }
-    return `RegentMGA's been busy this week — ${regentTouches.length} of your records mention competitor pressure. Worth a defence-pricing review on quoted-out submissions.`;
   }
 
   // (2) Permit / critical-date density.

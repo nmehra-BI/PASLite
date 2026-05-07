@@ -8,7 +8,9 @@
  *              margin).
  *
  * Rationale strings cite the hold floor explicitly so the audit story
- * shows WHY each option lands where it lands.
+ * shows WHY each option lands where it lands. The sharp-competitor
+ * name is parameterised so the same engine works across tenants
+ * with different competitive landscapes.
  */
 
 import type { DefencePricingOption } from './types';
@@ -18,6 +20,10 @@ export type ComputeDefencePricingInputs = {
   /** £ floor — derived from the sharp competitor's demonstrated win
    *  premium on similar profiles (module 6's hold-floor formula). */
   sharpCompetitorHoldFloor: number;
+  /** Display name of the primary sharp competitor whose floor sets
+   *  the defence band. Defaults to 'the sharp competitor' when not
+   *  supplied — the rationale stays well-formed but generic. */
+  sharpCompetitorName?: string;
   /** Broker target if quoted; informational. */
   brokerTarget: number | null;
 };
@@ -30,7 +36,13 @@ export type DefencePricingResult = {
 export function computeDefencePricing(
   input: ComputeDefencePricingInputs,
 ): DefencePricingResult {
-  const { technicalPremium, sharpCompetitorHoldFloor, brokerTarget } = input;
+  const {
+    technicalPremium,
+    sharpCompetitorHoldFloor,
+    brokerTarget,
+    sharpCompetitorName,
+  } = input;
+  const competitor = sharpCompetitorName ?? 'the sharp competitor';
 
   // Defend = midpoint between technical and (hold floor + 1.5k buffer);
   // rounded to nearest £500. For Greenline this lands around £52,000.
@@ -46,7 +58,7 @@ export function computeDefencePricing(
     {
       id: 'hold',
       premium: technicalPremium,
-      rationale: `Hold the technical: £${technicalPremium.toLocaleString('en-GB')} reflects the sealed Tier-2 calculation against year-2 inputs. Risk: the broker walks if RegentMGA quotes near £${(sharpCompetitorHoldFloor / 1000).toFixed(0)}k.`,
+      rationale: `Hold the technical: £${technicalPremium.toLocaleString('en-GB')} reflects the sealed Tier-2 calculation against year-2 inputs. Risk: the broker walks if ${competitor} quotes near £${(sharpCompetitorHoldFloor / 1000).toFixed(0)}k.`,
       recommended: false,
     },
     {
